@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/auth-context";
+import { ThemeProvider } from "next-themes";
+import { getServerUser, getServerSession } from "@/lib/auth/server";
 
 const geist = Geist({
   variable: "--font-geist",
@@ -18,19 +20,24 @@ export const metadata: Metadata = {
   description: "Transform product conversations into structured roadmaps",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const user = await getServerUser();
+  const session = await getServerSession();
+
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${instrumentSans.variable} ${geist.variable} antialiased`}
       >
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+          <AuthProvider initialUser={user} initialSession={session}>
+            {children}
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

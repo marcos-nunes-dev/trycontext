@@ -75,6 +75,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect unauthenticated users to signin (except auth pages, home page, and API routes)
+  // Note: The home page (/) is accessible to both authenticated and unauthenticated users
   if (
     !user &&
     !isAuthPage &&

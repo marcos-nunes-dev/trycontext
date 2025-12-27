@@ -32,9 +32,13 @@ export function Logo({
         width={width || 32}
         height={height || 32}
         className={cn(
-          'h-8 w-auto',
+          'h-8 w-8 flex-shrink-0',
           background === 'dark' && 'invert',
         )}
+        style={{
+          width: width ? `${width}px` : '32px',
+          height: height ? `${height}px` : '32px',
+        }}
         priority
       />
       {showText && (
