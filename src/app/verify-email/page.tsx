@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/ui/logo'
 import { createClient } from '@/lib/supabase/client'
 import { AlertCircle, CheckCircle2, Mail } from 'lucide-react'
+import type { EmailOtpType } from '@supabase/supabase-js'
 
 export default function VerifyEmailPage() {
   const searchParams = useSearchParams()
@@ -17,7 +18,7 @@ export default function VerifyEmailPage() {
 
   useEffect(() => {
     const token_hash = searchParams.get('token_hash')
-    const type = searchParams.get('type') || 'email'
+    const type = (searchParams.get('type') || 'email') as EmailOtpType
 
     if (token_hash) {
       verifyEmail(token_hash, type)
@@ -27,7 +28,7 @@ export default function VerifyEmailPage() {
     }
   }, [searchParams])
 
-  const verifyEmail = async (token_hash: string, type: string) => {
+  const verifyEmail = async (token_hash: string, type: EmailOtpType) => {
     try {
       const supabase = createClient()
       const { data, error } = await supabase.auth.verifyOtp({

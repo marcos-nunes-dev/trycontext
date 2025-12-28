@@ -251,7 +251,7 @@ export function UsersTable({
       scale: 1,
       filter: "blur(0px)",
       transition: {
-        type: "spring",
+        type: "spring" as const,
         stiffness: 400,
         damping: 25,
         mass: 0.7,

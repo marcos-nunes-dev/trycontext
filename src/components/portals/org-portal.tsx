@@ -1,16 +1,63 @@
-'use client'
+import { getServerUser } from '@/lib/auth/server'
+import { getUserWorkspaces, getCurrentWorkspace, getWorkspaceMembers } from '@/lib/workspaces/server'
+import { canManageMembers } from '@/lib/workspaces/permissions'
+import { getPendingInvitations } from '@/lib/workspaces/invitations'
+import { getFlowData } from '@/lib/flow/server'
+import { OrgPortalClient } from './org-portal-client'
 
-import { useUserRole } from '@/hooks/use-user-role'
+export async function OrgPortal() {
+  const user = await getServerUser()
+  
+  if (!user) {
+    return null
+  }
 
-export function OrgPortal() {
-  const { role } = useUserRole()
+  // Fetch workspaces and current workspace on the server
+  const workspaces = await getUserWorkspaces(user.id)
+  const currentWorkspace = await getCurrentWorkspace(user.id)
+
+  // Fetch flow data from database if workspace exists
+  let initialNodes: typeof import('@/types/flow').FlowNode[] = []
+  let initialEdges: typeof import('@/types/flow').FlowEdge[] = []
+
+  // Fetch workspace members and permissions
+  let members: typeof import('@/lib/workspaces/server').WorkspaceMember[] = []
+  let pendingInvitations: typeof import('@/lib/workspaces/invitations').WorkspaceInvitation[] = []
+  let canManage = false
+
+  if (currentWorkspace) {
+    const flowData = await getFlowData(currentWorkspace.id)
+    initialNodes = flowData.nodes
+    initialEdges = flowData.edges
+
+    // Fetch members and invitations
+    members = await getWorkspaceMembers(currentWorkspace.id)
+    pendingInvitations = await getPendingInvitations(currentWorkspace.id)
+    canManage = await canManageMembers(currentWorkspace.id, user.id)
+  }
+
+  // Mock folder structure for now - will be fetched from database later
+  const folderItems = [
+    {
+      id: 'general',
+      name: 'General Context',
+      type: 'folder' as const,
+      fileCount: 0,
+      children: [],
+    },
+  ]
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black text-white">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold">Organization Portal</h1>
-        <p className="mt-4 text-xl text-gray-400">Role: {role}</p>
-      </div>
-    </div>
+    <OrgPortalClient
+      currentWorkspace={currentWorkspace}
+      workspaces={workspaces}
+      initialNodes={initialNodes}
+      initialEdges={initialEdges}
+      folderItems={folderItems}
+      members={members}
+      pendingInvitations={pendingInvitations}
+      canManageMembers={canManage}
+      currentUserId={user.id}
+    />
   )
 }

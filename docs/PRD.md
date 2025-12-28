@@ -77,8 +77,10 @@ Context automates this workflow, allowing teams to focus on strategic decisions 
 - **Workspace-Based Architecture:**
   - Each user can belong to multiple workspaces
   - Each workspace represents a client/product organization
-  - One workspace = one Linear project
+  - One workspace = one Linear project (simplified for MVP)
   - Workspace owners can invite team members
+  - **Data Hierarchy:** Workspace → Epics → Stories → Tasks (direct relationship, no intermediate "Projects" layer)
+  - **Workspace Creation:** Users can create workspaces via the workspace switcher dialog (Cmd+K) in the header
 
 #### 3.1.3 Team Collaboration & Permissions
 - **Roles:**
@@ -280,35 +282,38 @@ Context automates this workflow, allowing teams to focus on strategic decisions 
 
 ### 3.6.3 Main Views
 
-#### Dashboard:
-- **Project Cards:** Grid/list view of all projects
-- **Recent Activity Feed:** Latest uploads, analyses, Linear syncs
-- **Quick Actions:** Create project, upload content, view workspaces
+#### Workspace View (Primary Interface):
+- **Flow Canvas:** Visual representation of epics, stories, and tasks using React Flow
+  - Hierarchical layout with epics containing stories, stories containing tasks
+  - Drag-and-drop node positioning
+  - Auto-layout feature for organizing nodes
+  - Pan and zoom controls
+  - Node selection and editing
+- **Workspace Switcher:** 
+  - Accessible via Cmd+K (or Ctrl+K) keyboard shortcut
+  - Shows all user workspaces
+  - Create new workspace option in dialog
+  - Quick switch between workspaces
+- **Content Panel:** Side panel showing uploaded content organized by folders
+- **Toolbar:** Actions for creating epics, stories, tasks, uploading content, and managing layout
 
-#### Project View (Tabbed Interface):
-1. **Overview Tab:**
-   - Project summary and statistics
-   - Content count and status
-   - Linear sync status
-   - Recent activity
-2. **Content Tab:**
-   - List/grid view of all uploaded content
-   - Filter by type, date, tags
-   - Search functionality (full-text + semantic)
-   - Content relationships graph view
-3. **Epics & Tickets Tab:**
-   - Draft epics and tickets (before Linear sync)
-   - Edit, approve, or delete drafts
-   - View Linear sync status
-   - Timeline/board view (future)
-4. **Knowledge Gaps Tab:**
-   - List of identified gaps
-   - Filter by confidence, status, epic
-   - Resolve or defer gaps
-5. **Settings Tab:**
-   - Linear integration configuration
-   - Project settings
-   - Team members and permissions
+#### Workspace Organization:
+- **Direct Hierarchy:** Workspace → Epics → Stories → Tasks
+  - No intermediate "Projects" layer (simplified for MVP)
+  - Each workspace maintains its own isolated context
+  - All epics, stories, tasks, and content are workspace-scoped
+- **Content Management:**
+  - Content organized in folders within workspace
+  - Content can be linked to multiple epics/stories/tasks
+  - Full-text and semantic search across workspace content
+- **Knowledge Gaps:**
+  - Identified gaps linked to specific epics/stories/tasks
+  - Filter by confidence, status, epic
+  - Resolve or defer gaps
+- **Settings:**
+  - Linear integration configuration (per workspace)
+  - Workspace settings
+  - Team members and permissions
 
 ### 3.6.4 Content Ingestion Flow
 - **Method:** Drag-and-drop zone + file picker
@@ -370,7 +375,7 @@ draft (AI-generated) → review (user edits) → approved → synced_to_linear
 
 #### Storage:
 - **File Storage:** Supabase Storage
-- **Organization:** `workspace/{workspaceId}/project/{projectId}/{contentType}/{fileId}`
+- **Organization:** `workspace/{workspaceId}/{contentType}/{fileId}` (simplified, no project layer)
 
 #### Background Jobs:
 - **Queue System:** BullMQ (Redis-based)
@@ -450,18 +455,15 @@ draft (AI-generated) → review (user edits) → approved → synced_to_linear
 - `role` (enum: Owner, Admin, Member, Viewer)
 - `created_at`, `updated_at`
 
-#### Project
-- `id` (UUID)
-- `workspace_id` (UUID, FK)
-- `name` (string)
-- `description` (text, nullable)
-- `status` (enum: Active, Archived)
+#### UserWorkspacePreferences
+- `user_id` (UUID, PK, FK to User)
+- `workspace_id` (UUID, FK) - Current active workspace for user
 - `created_at`, `updated_at`
 
 #### Content
 - `id` (UUID)
-- `project_id` (UUID, FK)
-- `type` (enum: Transcription, Document, Image)
+- `workspace_id` (UUID, FK) - Direct workspace relationship
+- `type` (enum: transcription, document, image)
 - `file_url` (string, Supabase Storage URL)
 - `file_name` (string)
 - `file_size` (integer)
@@ -485,32 +487,43 @@ draft (AI-generated) → review (user edits) → approved → synced_to_linear
 
 #### Epic (Draft)
 - `id` (UUID)
-- `project_id` (UUID, FK)
+- `workspace_id` (UUID, FK) - Direct workspace relationship
 - `title` (string)
 - `description` (text)
 - `status` (enum: draft, approved, synced)
-- `linear_epic_id` (string, nullable)
-- `source_content_ids` (UUID[], array of content IDs)
+- `content_ids` (UUID[], array of content IDs)
+- `position_x`, `position_y` (double precision) - React Flow canvas positions
 - `created_at`, `updated_at`
 
-#### Ticket (Draft)
+#### Story (Draft)
 - `id` (UUID)
-- `project_id` (UUID, FK)
-- `epic_id` (UUID, FK, nullable)
+- `workspace_id` (UUID, FK) - Direct workspace relationship
+- `epic_id` (UUID, FK, nullable) - Optional parent epic
 - `title` (string)
 - `description` (text)
-- `priority` (enum: Low, Medium, High, Urgent)
-- `estimate` (integer, story points)
+- `status` (enum: draft, approved, synced)
+- `content_ids` (UUID[], array of content IDs)
+- `position_x`, `position_y` (double precision) - React Flow canvas positions
+- `created_at`, `updated_at`
+
+#### Task (Draft)
+- `id` (UUID)
+- `workspace_id` (UUID, FK) - Direct workspace relationship
+- `story_id` (UUID, FK, nullable) - Parent story
+- `title` (string)
+- `description` (text)
+- `priority` (enum: low, medium, high, urgent)
 - `status` (enum: draft, review, approved, synced)
-- `linear_issue_id` (string, nullable)
-- `source_content_ids` (UUID[], array of content IDs)
+- `content_ids` (UUID[], array of content IDs)
+- `position_x`, `position_y` (double precision) - React Flow canvas positions
 - `created_at`, `updated_at`
 
 #### KnowledgeGap
 - `id` (UUID)
-- `project_id` (UUID, FK)
+- `workspace_id` (UUID, FK) - Direct workspace relationship
 - `epic_id` (UUID, FK, nullable)
-- `ticket_id` (UUID, FK, nullable)
+- `story_id` (UUID, FK, nullable)
+- `task_id` (UUID, FK, nullable)
 - `question` (text)
 - `confidence` (enum: High, Medium, Low)
 - `category` (string - requirements, edge_cases, user_flows, etc.)
@@ -519,15 +532,16 @@ draft (AI-generated) → review (user edits) → approved → synced_to_linear
 - `created_at`, `updated_at`
 
 ### 5.2 Relationships
-- Workspace → Projects (1:many)
-- Project → Content (1:many)
-- Project → Epics (1:many)
-- Project → Tickets (1:many)
-- Project → KnowledgeGaps (1:many)
-- Epic → Tickets (1:many)
+- Workspace → Epics (1:many) - Direct relationship, no Projects layer
+- Workspace → Stories (1:many) - Stories can optionally belong to an Epic
+- Workspace → Tasks (1:many) - Tasks belong to a Story
+- Workspace → Content (1:many) - Content directly belongs to workspace
+- Epic → Stories (1:many) - Optional relationship
+- Story → Tasks (1:many) - Tasks belong to stories
 - Content → ContentText (1:1)
 - Content → ContentEmbedding (1:many)
-- Ticket → KnowledgeGaps (1:many)
+- Epic/Story/Task → Content (many:many via content_ids arrays)
+- Epic/Story/Task → KnowledgeGaps (1:many)
 
 ---
 
@@ -536,30 +550,30 @@ draft (AI-generated) → review (user edits) → approved → synced_to_linear
 ### 6.1 New User Onboarding
 1. User signs up (email/Google)
 2. Guided tour (optional)
-3. Create first workspace
-4. Connect Linear project (API key input)
-5. Create first project
-6. Upload sample content or start blank
+3. System automatically creates default workspace ("My Workspace")
+4. User can create additional workspaces via workspace switcher (Cmd+K)
+5. Connect Linear project (API key input) - per workspace
+6. Upload content or start creating epics/stories/tasks directly
 
 ### 6.2 Content Upload & Analysis Flow
-1. User navigates to project
-2. Drag-and-drop content files
-3. Files upload to Supabase Storage
+1. User navigates to workspace (flow canvas view)
+2. Drag-and-drop content files via toolbar or content panel
+3. Files upload to Supabase Storage (workspace-scoped)
 4. Content status: `uploaded`
 5. Background job processes content (status: `processing`)
 6. AI analyzes content using LangChain + OpenAI
-7. Draft epics/tickets generated (status: `analyzed`)
-8. Knowledge gaps identified
+7. Draft epics/stories/tasks generated (status: `analyzed`)
+8. Knowledge gaps identified and linked to relevant nodes
 9. User notified via real-time update
-10. User reviews drafts in "Epics & Tickets" tab
+10. User reviews drafts on flow canvas, can edit/approve/delete nodes
 
 ### 6.3 Linear Sync Flow
-1. User reviews AI-generated epics/tickets
-2. User edits/approves drafts
-3. User clicks "Sync to Linear" button
+1. User reviews AI-generated epics/stories/tasks on flow canvas
+2. User edits/approves drafts (can modify title, description, status, priority)
+3. User clicks "Sync to Linear" button (per node or batch)
 4. System creates epics/issues in Linear via API
-5. Status updates to `synced_to_linear`
-6. Linear IDs stored for reference
+5. Status updates to `synced`
+6. Linear IDs stored for reference (future: linear_epic_id, linear_issue_id fields)
 7. User can view synced items in Linear
 
 ### 6.4 Knowledge Gap Resolution Flow
@@ -581,24 +595,30 @@ draft (AI-generated) → review (user edits) → approved → synced_to_linear
 
 ✅ **Core Features:**
 - User authentication (email + Google SSO)
-- Workspace creation and management
-- Project creation (one per Linear project)
-- Content upload (transcriptions, PDFs, images)
+- Workspace creation and management (via header dialog, Cmd+K)
+- Workspace switching with isolated data per workspace
+- Direct workspace → epics/stories/tasks hierarchy
+- Flow canvas visualization (React Flow) with hierarchical node layout
+- Content upload (transcriptions, PDFs, images) - workspace-scoped
 - Batch processing with queue system
 - AI analysis pipeline (OpenAI + LangChain)
-- Draft epic/ticket generation
+- Draft epic/story/task generation
 - Linear API integration (one-way sync)
 - Knowledge gap identification with confidence scoring
 - Basic search (full-text)
-- Content linking (basic)
+- Content linking via content_ids arrays
 - Role-based permissions (Owner, Admin, Member, Viewer)
 
 ✅ **UI Features:**
-- Dashboard with project list
-- Project view with tabs (Overview, Content, Epics/Tickets, Knowledge Gaps, Settings)
+- Workspace flow canvas with visual node representation
+- Workspace switcher dialog (Cmd+K) with create option
+- Header with workspace selector, zoom controls, and user menu
+- Toolbar for creating nodes (epics, stories, tasks) and managing layout
+- Content panel for organizing uploaded files
 - Drag-and-drop content upload
 - Real-time status updates
-- Linear sync interface
+- Linear sync interface (per node or batch)
+- Auto-layout feature for organizing flow nodes
 
 ### 7.2 Excluded from MVP (Future Phases)
 

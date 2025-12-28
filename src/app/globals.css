@@ -255,3 +255,12 @@ body {
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-geist), sans-serif;
 }
+
+/* Line clamp utilities */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

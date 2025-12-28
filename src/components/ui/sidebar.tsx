@@ -174,9 +174,9 @@ export const SidebarLink = ({
 
   // Clone icon and conditionally apply white color when sidebar is contracted
   const iconWithConditionalColor = React.isValidElement(link.icon)
-    ? React.cloneElement(link.icon as React.ReactElement, {
+    ? React.cloneElement(link.icon as React.ReactElement<{ className?: string }>, {
         className: cn(
-          (link.icon as React.ReactElement).props.className,
+          (link.icon as React.ReactElement<{ className?: string }>).props.className,
           !open && "!text-white"
         ),
       })

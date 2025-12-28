@@ -86,7 +86,7 @@ export function generateMockUsers(count: number = 15): User[] {
     const daysSinceRegistration = Math.floor((now.getTime() - registrationDate.getTime()) / (1000 * 60 * 60 * 24))
     const lastLoginDaysAgo = Math.random() < 0.15 ? null : randomInt(0, Math.min(daysSinceRegistration, 30))
     const lastLogin = lastLoginDaysAgo === null ? null : new Date(now.getTime() - lastLoginDaysAgo * 24 * 60 * 60 * 1000)
-    const isActive = lastLogin === null ? Math.random() < 0.3 : lastLoginDaysAgo < 30
+    const isActive = lastLogin === null ? Math.random() < 0.3 : (lastLoginDaysAgo ?? 0) < 30
 
     const name = randomElement(names)
     const email = `${name.toLowerCase().replace(/\s+/g, '.')}@example.com`

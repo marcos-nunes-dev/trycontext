@@ -15,12 +15,27 @@ export async function getServerUser(): Promise<User | null> {
 
 /**
  * Get the current session from the server-side Supabase client
+ * Note: For security, prefer using getServerUser() when you need user data
+ * This function verifies the user first, then gets the session
  */
 export async function getServerSession(): Promise<Session | null> {
   const supabase = await createClient()
+  
+  // First verify user is authenticated using getUser() (more secure)
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  
+  if (!user) {
+    return null
+  }
+  
+  // Get session - but don't use session.user, use the verified user from getUser() instead
   const {
     data: { session },
   } = await supabase.auth.getSession()
+  
+  // Return session but note: session.user should not be used - use getServerUser() instead
   return session
 }
 
