@@ -9,6 +9,7 @@ export interface EpicNodeData extends Record<string, unknown> {
   description: string
   status: NodeStatus
   contentIds: string[]
+  metadata?: Record<string, unknown>
 }
 
 export interface EpicNode extends Node<EpicNodeData> {
@@ -22,6 +23,7 @@ export interface StoryNodeData extends Record<string, unknown> {
   status: NodeStatus
   epicId: string
   contentIds: string[]
+  metadata?: Record<string, unknown>
 }
 
 export interface StoryNode extends Node<StoryNodeData> {
@@ -40,6 +42,7 @@ export interface TaskNodeData extends Record<string, unknown> {
   status: NodeStatus
   storyId: string
   contentIds: string[]
+  metadata?: Record<string, unknown>
 }
 
 export interface TaskNode extends Node<TaskNodeData> {

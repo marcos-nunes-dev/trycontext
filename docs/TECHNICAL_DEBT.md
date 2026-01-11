@@ -27,23 +27,30 @@ This document tracks all known technical debts, temporary implementations, and a
 
 ---
 
-## Content Upload Functionality
+## Content Ingestion (Context Upload)
 
-### Status: Not Implemented
-**Location:** `src/components/portals/org-portal-client.tsx` (line 200)
+### Status: Implemented (MVP)
+**Location:** `src/app/actions/content.ts`, `src/lib/content/`
 
 **Current State:**
-- `handleUploadContent` callback is empty
-- TODO comment: "Implement upload content functionality"
+- File upload and ingestion pipeline implemented
+- Supports PDF, TXT, MD, SRT, VTT, PNG, JPG
+- Synchronous processing (may timeout on large files)
+- Vector embeddings stored in pgvector
+
+**Temporary Decisions:**
+- **Synchronous ingestion**: May hit serverless timeouts for large PDFs (>50MB or complex documents). Future: Move to async job queue (BullMQ or similar).
+- **Fixed embedding dimension**: `vector(1536)` hardcoded for OpenAI `text-embedding-3-small`. Future model changes require migration.
+- **Vector insertion**: Currently passing arrays directly to Supabase. If PostgREST doesn't handle vector types, may need database function wrapper.
 
 **Action Required:**
-- [ ] Implement file upload UI
-- [ ] Add file storage integration (Supabase Storage)
-- [ ] Create content management endpoints
-- [ ] Add file type validation and size limits
-- [ ] Implement content preview/display
+- [ ] Monitor for timeout issues with large files
+- [ ] Plan async job queue migration when needed
+- [ ] Test vector insertion with actual Supabase instance
+- [ ] Add database function for vector insertion if direct insert fails
+- [ ] Consider adding progress tracking for long-running ingestions
 
-**Priority:** Medium
+**Priority:** Medium (works for MVP, but needs monitoring)
 
 ---
 

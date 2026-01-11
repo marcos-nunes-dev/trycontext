@@ -11,6 +11,8 @@ import {
   Settings,
   HelpCircle,
   LayoutGrid,
+  Sparkles,
+  Wand2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +26,8 @@ interface ToolbarProps {
   onSettings?: () => void
   onHelp?: () => void
   onAutoLayout?: () => void
+  onGeneratePlan?: () => void
+  onViewSuggestions?: () => void
 }
 
 const toolbarSections = [
@@ -34,6 +38,13 @@ const toolbarSections = [
       { id: 'story', icon: Circle, label: 'Add Story', color: 'text-blue-400' },
       { id: 'task', icon: Triangle, label: 'Add Task', color: 'text-teal-100' },
       { id: 'upload', icon: FolderPlus, label: 'Upload Content', color: 'text-foreground' },
+    ],
+  },
+  {
+    label: 'AI Planning',
+    items: [
+      { id: 'generatePlan', icon: Wand2, label: 'Generate Plan', color: 'text-purple-400' },
+      { id: 'viewSuggestions', icon: Sparkles, label: 'View Suggestions', color: 'text-amber-400' },
     ],
   },
   {
@@ -68,6 +79,8 @@ export function Toolbar({
   onSettings,
   onHelp,
   onAutoLayout,
+  onGeneratePlan,
+  onViewSuggestions,
 }: ToolbarProps) {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
 
@@ -84,6 +97,12 @@ export function Toolbar({
         break
       case 'upload':
         onUploadContent?.()
+        break
+      case 'generatePlan':
+        onGeneratePlan?.()
+        break
+      case 'viewSuggestions':
+        onViewSuggestions?.()
         break
       case 'autoLayout':
         onAutoLayout?.()

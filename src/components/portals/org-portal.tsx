@@ -3,6 +3,7 @@ import { getUserWorkspaces, getCurrentWorkspace, getWorkspaceMembers } from '@/l
 import { canManageMembers, canEditWorkspace, canDeleteWorkspace } from '@/lib/workspaces/permissions'
 import { getPendingInvitations } from '@/lib/workspaces/invitations'
 import { getFlowData } from '@/lib/flow/server'
+import { buildContextTree } from '@/lib/content/tree'
 import { OrgPortalClient } from './org-portal-client'
 
 export async function OrgPortal() {
@@ -51,16 +52,11 @@ export async function OrgPortal() {
     canManage = managePermission
   }
 
-  // Mock folder structure for now - will be fetched from database later
-  const folderItems = [
-    {
-      id: 'general',
-      name: 'General Context',
-      type: 'folder' as const,
-      fileCount: 0,
-      children: [],
-    },
-  ]
+  // Fetch context tree if workspace exists
+  let folderItems: typeof import('@/lib/content/tree').ContextTreeItem[] = []
+  if (currentWorkspace) {
+    folderItems = await buildContextTree(currentWorkspace.id)
+  }
 
   return (
     <OrgPortalClient

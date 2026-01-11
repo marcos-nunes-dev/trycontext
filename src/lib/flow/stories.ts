@@ -33,6 +33,7 @@ export function convertStoriesToNodesAndEdges(stories: Array<{
   position_x: number
   position_y: number
   content_ids: string[] | null
+  metadata?: Record<string, unknown> | null
 }>): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const nodes: FlowNode[] = []
   const edges: FlowEdge[] = []
@@ -47,11 +48,12 @@ export function convertStoriesToNodesAndEdges(stories: Array<{
       story.content_ids || []
     )
     node.data.status = story.status as 'draft' | 'approved' | 'synced'
-    
-    if (story.epic_id) {
-      node.parentId = story.epic_id
-      node.extent = 'parent'
+    if (story.metadata) {
+      node.data.metadata = story.metadata
     }
+    
+    // Removed parentId and extent to allow free movement
+    // Stories are still linked to epics via edges, but not constrained by parent bounds
     
     nodes.push(node)
 
@@ -92,6 +94,7 @@ export async function saveStoryNode(
           description: data.description || '',
           status: data.status || 'draft',
           content_ids: data.contentIds || [],
+          metadata: data.metadata || {},
           position_x: position.x,
           position_y: position.y,
           updated_at: new Date().toISOString(),

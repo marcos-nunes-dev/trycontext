@@ -5,32 +5,30 @@ import { FolderStructure } from './folder-structure'
 import { PricingUsage } from './pricing-usage'
 import { cn } from '@/lib/utils'
 
+import type { ContextTreeItem } from './folder-structure'
+
 interface ContentPanelProps {
-  folderItems?: Array<{
-    id: string
-    name: string
-    type: 'folder' | 'file'
-    children?: Array<{
-      id: string
-      name: string
-      type: 'folder' | 'file'
-      children?: any[]
-      fileCount?: number
-    }>
-    fileCount?: number
-  }>
+  folderItems?: ContextTreeItem[]
+  workspaceId: string
   credits?: number
   creditsLimit?: number
   storageUsed?: number
   storageLimit?: number
+  onUpload?: (scope: { type: 'workspace' | 'epic' | 'story' | 'task'; id?: string }) => void
+  onAttach?: (scope: { type: 'workspace' | 'epic' | 'story' | 'task'; id?: string }) => void
+  onDetach?: (linkId: string) => void
 }
 
 export function ContentPanel({
   folderItems = [],
+  workspaceId,
   credits,
   creditsLimit,
   storageUsed,
   storageLimit,
+  onUpload,
+  onAttach,
+  onDetach,
 }: ContentPanelProps) {
   const [activeView, setActiveView] = useState<'folder' | 'pricing'>('folder')
 
@@ -47,7 +45,7 @@ export function ContentPanel({
               : 'text-gray-1700 hover:text-foreground hover:bg-gray-2000/30'
           )}
         >
-          Folder Structure
+          Context
         </button>
         <button
           onClick={() => setActiveView('pricing')}
@@ -65,7 +63,13 @@ export function ContentPanel({
       {/* Content */}
       <div className="max-h-[400px] overflow-y-auto">
         {activeView === 'folder' ? (
-          <FolderStructure items={folderItems} />
+          <FolderStructure
+            items={folderItems}
+            workspaceId={workspaceId}
+            onUpload={onUpload}
+            onAttach={onAttach}
+            onDetach={onDetach}
+          />
         ) : (
           <PricingUsage
             credits={credits}

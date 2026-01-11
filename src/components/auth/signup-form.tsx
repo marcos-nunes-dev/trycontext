@@ -26,16 +26,24 @@ export function SignUpForm({ invitationToken }: SignUpFormProps) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [oauthError, setOauthError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   const { execute: handleSignUp, isPending } = useAction(signUpAction, {
+    onSuccess: () => {
+      setSuccess(true)
+    },
     onError: (err) => {
       setError(err.message || 'Failed to sign up')
+      setSuccess(false)
     },
   })
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError(null)
+    setSuccess(false)
+    setSuccessMessage(null)
 
     // Client-side validation
     if (password !== confirmPassword) {
@@ -51,11 +59,14 @@ export function SignUpForm({ invitationToken }: SignUpFormProps) {
     try {
       const result = await handleSignUp({ email, password, name, invitationToken })
       
-      // If there's an invitation token, redirect to accept it after signup
+      if (result?.message) {
+        setSuccessMessage(result.message)
+      }
+      
+      // If there's an invitation token, redirect immediately
       if (invitationToken && result?.user) {
         router.push(`/accept-invitation/${invitationToken}`)
         router.refresh()
-        return
       }
     } catch (err) {
       // Error is handled by onError callback
@@ -73,19 +84,27 @@ export function SignUpForm({ invitationToken }: SignUpFormProps) {
       />
       
       {displayError && <AuthErrorMessage message={displayError} />}
+      {success && successMessage && (
+        <AuthSuccessMessage message={successMessage} />
+      )}
       
-      <div className="space-y-2">
-        <OAuthButton
-          provider="google"
-          invitationToken={invitationToken}
-          onError={setOauthError}
-          disabled={isPending}
-        />
-      </div>
+      {!success && (
+        <>
+          <div className="space-y-2">
+            <OAuthButton
+              provider="google"
+              invitationToken={invitationToken}
+              onError={setOauthError}
+              disabled={isPending}
+            />
+          </div>
 
-      <AuthSeparator />
+          <AuthSeparator />
+        </>
+      )}
 
-      <form className="space-y-4" onSubmit={handleSubmit}>
+      {!success && (
+        <form className="space-y-4" onSubmit={handleSubmit}>
         <AuthFormField
           icon={<User className="size-4" aria-hidden="true" />}
           inputProps={{
@@ -140,39 +159,57 @@ export function SignUpForm({ invitationToken }: SignUpFormProps) {
           }}
         />
 
-        <LoadingButton type="submit" className="w-full" isLoading={isPending}>
-          Create Account
-        </LoadingButton>
-      </form>
+          <LoadingButton type="submit" className="w-full" isLoading={isPending}>
+            Create Account
+          </LoadingButton>
+        </form>
+      )}
       
-      <div className="mt-8 space-y-4">
-        <p className="text-muted-foreground text-center text-sm">
-          Already have an account?{' '}
-          <Link
-            href="/signin"
-            className="hover:text-primary underline underline-offset-4 font-medium font-heading"
-          >
-            Sign in
-          </Link>
-        </p>
-        <p className="text-muted-foreground text-center text-xs">
-          By creating an account, you agree to our{' '}
-          <Link
-            href="#"
-            className="hover:text-primary underline underline-offset-4"
-          >
-            Terms of Service
-          </Link>
-          {' '}and{' '}
-          <Link
-            href="#"
-            className="hover:text-primary underline underline-offset-4"
-          >
-            Privacy Policy
-          </Link>
-          .
-        </p>
-      </div>
+      {!success && (
+        <div className="mt-8 space-y-4">
+          <p className="text-muted-foreground text-center text-sm">
+            Already have an account?{' '}
+            <Link
+              href="/signin"
+              className="hover:text-primary underline underline-offset-4 font-medium font-heading"
+            >
+              Sign in
+            </Link>
+          </p>
+          <p className="text-muted-foreground text-center text-xs">
+            By creating an account, you agree to our{' '}
+            <Link
+              href="#"
+              className="hover:text-primary underline underline-offset-4"
+            >
+              Terms of Service
+            </Link>
+            {' '}and{' '}
+            <Link
+              href="#"
+              className="hover:text-primary underline underline-offset-4"
+            >
+              Privacy Policy
+            </Link>
+            .
+          </p>
+        </div>
+      )}
+
+      {success && !invitationToken && (
+        <div className="mt-8 space-y-4">
+          <p className="text-muted-foreground text-center text-sm">
+            Check your email to verify your account, then{' '}
+            <Link
+              href="/signin"
+              className="hover:text-primary underline underline-offset-4 font-medium font-heading"
+            >
+              sign in
+            </Link>
+            .
+          </p>
+        </div>
+      )}
     </>
   )
 }

@@ -34,6 +34,7 @@ export function convertTasksToNodesAndEdges(tasks: Array<{
   position_x: number
   position_y: number
   content_ids: string[] | null
+  metadata?: Record<string, unknown> | null
 }>): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const nodes: FlowNode[] = []
   const edges: FlowEdge[] = []
@@ -49,6 +50,9 @@ export function convertTasksToNodesAndEdges(tasks: Array<{
       task.content_ids || []
     )
     node.data.status = task.status as 'draft' | 'approved' | 'synced'
+    if (task.metadata) {
+      node.data.metadata = task.metadata
+    }
     nodes.push(node)
 
     // Create edge from story to task
@@ -89,6 +93,7 @@ export async function saveTaskNode(
           priority: data.priority || 'medium',
           status: data.status || 'draft',
           content_ids: data.contentIds || [],
+          metadata: data.metadata || {},
           position_x: position.x,
           position_y: position.y,
           updated_at: new Date().toISOString(),
