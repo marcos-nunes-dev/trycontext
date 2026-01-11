@@ -1,0 +1,166 @@
+# Context - AI-Powered Product Management Platform
+
+## Project Overview
+- Next.js 16+ with App Router
+- React 19 with TypeScript
+- Tailwind CSS v4
+- Supabase (PostgreSQL + Auth + Storage)
+- React Flow for canvas visualization
+
+## Architectural Decisions
+
+### Component Structure
+- Maximum component size: ~150 lines
+- Components >150 lines should be split into smaller, focused modules
+- Use composition pattern: Parent + Child components over monolithic files
+- Keep business logic in hooks, UI in components
+
+### File Organization
+src/
+├── app/                    # Next.js App Router (pages + API routes)
+│   ├── [route]/
+│   │   ├── page.tsx       # Server component (data fetching)
+│   │   ├── loading.tsx    # Streaming skeleton
+│   │   └── error.tsx      # Error boundary
+├── components/
+│   ├── ui/                # Reusable primitives (Button, Input, Dialog)
+│   ├── [feature]/         # Feature-specific (org/, admin/)
+│   └── blocks/            # Larger composed sections
+├── contexts/              # React contexts (auth, dialog, theme)
+├── hooks/                 # Custom hooks
+├── lib/                   # Utilities and server logic
+│   ├── [feature]/server.ts  # Server-only functions
+│   └── [feature]/client.ts  # Client utilities
+├── types/                 # TypeScript definitions
+
+### Patterns to Follow
+
+#### Server Actions
+- All mutations use server actions in `app/actions/`
+- Always validate user authentication first
+- Use `revalidatePath` after mutations
+- Return `{ success: boolean, error?: string }` pattern
+
+#### State Management
+- Use React Context for cross-component state
+- Use server components + props for data flow when possible
+- Avoid prop drilling beyond 2 levels
+- Use `useAction` hook for server action calls with loading/error states
+
+#### Component Communication
+- NEVER use `document.dispatchEvent` or custom DOM events
+- Use Context or callback props instead
+- For dialogs: use DialogProvider context
+- Remove all custom event listeners once Context is in place
+
+#### Hooks
+- Use `useAction` hook for server action calls
+- Extract complex logic into custom hooks
+- Hooks should be single-responsibility
+- Check existing hooks before creating new ones
+
+#### Loading States
+- Every route should have `loading.tsx` file
+- Use Skeleton components for loading UI
+- Buttons should show loading state during async operations
+- Use React's `startTransition` for non-urgent updates
+
+#### Error Handling
+- Every route should have `error.tsx` file
+- Use try/catch with proper error messages
+- Never swallow errors silently
+- Show user-friendly error messages
+
+### Anti-Patterns to Avoid
+- `setTimeout` for React state coordination (use `startTransition` instead)
+- `useEffect` for things that can be derived from props/state
+- Components over 150 lines (split into smaller modules)
+- Inline dialog definitions (use DialogProvider context)
+- `console.log` or `console.error` in production code
+- `any` TypeScript type (use proper types or `unknown`)
+- Custom DOM events for React component communication
+- Unnecessary `useEffect` dependencies or missing cleanup
+
+### Before Creating New Components
+1. Check if similar component exists in `src/components/ui/`
+2. Check `docs/ARCHITECTURE.md` for patterns
+3. Ensure component follows size limits (~150 lines max)
+4. Add loading and error states if needed
+5. Use existing UI primitives from `src/components/ui/`
+
+### Code Review Checklist
+Before submitting, verify:
+- [ ] No components exceed 150 lines
+- [ ] No custom DOM events used (`document.dispatchEvent`, `addEventListener` for component communication)
+- [ ] No unnecessary `useEffect` (can logic be derived instead?)
+- [ ] No `setTimeout` for state coordination
+- [ ] Loading states implemented where needed
+- [ ] Error handling in place (try/catch, error.tsx files)
+- [ ] TypeScript strict (no `any` types)
+- [ ] Server actions return `{ success: boolean, error?: string }`
+- [ ] `revalidatePath` called after mutations
+- [ ] Check existing hooks/components before creating new ones
+
+### Common Patterns Reference
+
+#### Server Action Pattern
+```tsx
+'use server'
+export async function myAction(data: InputType) {
+  const user = await getServerUser()
+  if (!user) throw new Error('Unauthorized')
+  
+  // Validation
+  if (!data.field) throw new Error('Field required')
+  
+  // Action logic
+  const result = await performAction(data)
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Action failed')
+  }
+  
+  revalidatePath('/relevant-path')
+  return { success: true }
+}
+```
+
+#### Client Component with Server Action
+```tsx
+'use client'
+import { useAction } from '@/hooks/use-action'
+
+export function MyComponent() {
+  const { execute, isPending, error } = useAction(myAction)
+  
+  const handleSubmit = async () => {
+    try {
+      await execute(data)
+    } catch (err) {
+      // Error already handled by useAction
+    }
+  }
+  
+  return (
+    <Button onClick={handleSubmit} disabled={isPending}>
+      {isPending ? 'Loading...' : 'Submit'}
+    </Button>
+  )
+}
+```
+
+#### Dialog Pattern (using DialogProvider)
+```tsx
+'use client'
+import { useDialogs } from '@/contexts/dialog-context'
+
+export function MyComponent() {
+  const { openDialog, closeDialog } = useDialogs()
+  
+  const handleClick = () => {
+    openDialog('my-dialog-name')
+  }
+  
+  return <Button onClick={handleClick}>Open Dialog</Button>
+}
+```

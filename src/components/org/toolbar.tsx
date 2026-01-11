@@ -70,7 +70,6 @@ export function Toolbar({
   onAutoLayout,
 }: ToolbarProps) {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
-  const [isHovered, setIsHovered] = useState(false)
 
   const handleAction = (id: string) => {
     switch (id) {
@@ -106,12 +105,7 @@ export function Toolbar({
 
   return (
     <div
-      className={cn(
-        'fixed left-4 top-20 z-40 bg-gray-3900/30 backdrop-blur-md border border-gray-2000/50 rounded-lg shadow-lg flex flex-col transition-all duration-200',
-        isHovered ? 'gap-4 py-4 px-3' : 'gap-2 py-2 px-2'
-      )}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      className="fixed left-4 top-20 z-40 bg-gray-3900/30 backdrop-blur-md border border-gray-2000/50 rounded-lg shadow-lg flex flex-col gap-4 py-4 px-3"
     >
       {toolbarSections.map((section, sectionIndex) => (
         <div key={section.label} className="flex flex-col gap-2">

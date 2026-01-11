@@ -1,6 +1,6 @@
 import { getServerUser } from '@/lib/auth/server'
 import { getUserWorkspaces, getCurrentWorkspace, getWorkspaceMembers } from '@/lib/workspaces/server'
-import { canManageMembers } from '@/lib/workspaces/permissions'
+import { canManageMembers, canEditWorkspace, canDeleteWorkspace } from '@/lib/workspaces/permissions'
 import { getPendingInvitations } from '@/lib/workspaces/invitations'
 import { getFlowData } from '@/lib/flow/server'
 import { OrgPortalClient } from './org-portal-client'
@@ -25,15 +25,30 @@ export async function OrgPortal() {
   let pendingInvitations: typeof import('@/lib/workspaces/invitations').WorkspaceInvitation[] = []
   let canManage = false
 
+  // Calculate permissions for all workspaces
+  const workspacePermissions: Record<string, { canEdit: boolean; canDelete: boolean }> = {}
+  for (const workspace of workspaces) {
+    const [canEdit, canDelete] = await Promise.all([
+      canEditWorkspace(workspace.id, user.id),
+      canDeleteWorkspace(workspace.id, user.id),
+    ])
+    workspacePermissions[workspace.id] = { canEdit, canDelete }
+  }
+
   if (currentWorkspace) {
-    const flowData = await getFlowData(currentWorkspace.id)
+    // Fetch all workspace data in parallel for better performance
+    const [flowData, workspaceMembers, invitations, managePermission] = await Promise.all([
+      getFlowData(currentWorkspace.id),
+      getWorkspaceMembers(currentWorkspace.id),
+      getPendingInvitations(currentWorkspace.id),
+      canManageMembers(currentWorkspace.id, user.id),
+    ])
+
     initialNodes = flowData.nodes
     initialEdges = flowData.edges
-
-    // Fetch members and invitations
-    members = await getWorkspaceMembers(currentWorkspace.id)
-    pendingInvitations = await getPendingInvitations(currentWorkspace.id)
-    canManage = await canManageMembers(currentWorkspace.id, user.id)
+    members = workspaceMembers
+    pendingInvitations = invitations
+    canManage = managePermission
   }
 
   // Mock folder structure for now - will be fetched from database later
@@ -58,6 +73,7 @@ export async function OrgPortal() {
       pendingInvitations={pendingInvitations}
       canManageMembers={canManage}
       currentUserId={user.id}
+      workspacePermissions={workspacePermissions}
     />
   )
 }

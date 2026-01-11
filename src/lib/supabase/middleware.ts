@@ -74,11 +74,14 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  // Redirect unauthenticated users to signin (except auth pages, home page, and API routes)
-  // Note: The home page (/) is accessible to both authenticated and unauthenticated users
+  // Redirect unauthenticated users to signin (except auth pages, home page, invitation pages, and API routes)
+  // Note: The home page (/) and accept-invitation pages are accessible to both authenticated and unauthenticated users
+  const isInvitationPage = request.nextUrl.pathname.startsWith('/accept-invitation')
+  
   if (
     !user &&
     !isAuthPage &&
+    !isInvitationPage &&
     request.nextUrl.pathname !== '/' &&
     !request.nextUrl.pathname.startsWith('/api/auth/callback') &&
     !request.nextUrl.pathname.startsWith('/api/')

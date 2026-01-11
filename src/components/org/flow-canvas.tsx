@@ -15,6 +15,7 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { motion, AnimatePresence } from 'framer-motion'
 import { EpicNode } from './flow-nodes/epic-node'
 import { EpicGroupNode } from './flow-nodes/epic-group-node'
 import { StoryNode } from './flow-nodes/story-node'
@@ -42,6 +43,7 @@ interface FlowCanvasInnerProps {
   onInit?: (instance: ReactFlowInstance) => void
   onNodesUpdate?: (nodes: FlowNode[]) => void
   panOnDrag?: boolean
+  isLoading?: boolean
 }
 
 function FlowCanvasInner({
@@ -56,6 +58,7 @@ function FlowCanvasInner({
   onInit,
   onNodesUpdate,
   panOnDrag = false,
+  isLoading = false,
 }: FlowCanvasInnerProps) {
   const reactFlowInstance = useReactFlow()
 
@@ -107,28 +110,58 @@ function FlowCanvasInner({
   )
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onConnect={onConnect}
-      onNodeClick={onNodeClick}
-      onPaneClick={onPaneClick}
-      onNodeDragStop={handleNodeDragStop}
-      onMove={(_, viewport) => {
-        if (onZoomChange) {
-          onZoomChange(viewport.zoom)
-        }
-      }}
-      nodeTypes={nodeTypes}
-      defaultEdgeOptions={defaultEdgeOptions}
-      panOnDrag={panOnDrag}
-      fitView
-      className="bg-black"
-    >
-      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#3e3e44" />
-    </ReactFlow>
+    <div className="relative w-full h-full">
+      <AnimatePresence mode="wait">
+        {!isLoading && (
+          <motion.div
+            key="flow-canvas"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="w-full h-full"
+          >
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={onNodeClick}
+              onPaneClick={onPaneClick}
+              onNodeDragStop={handleNodeDragStop}
+              onMove={(_, viewport) => {
+                if (onZoomChange) {
+                  onZoomChange(viewport.zoom)
+                }
+              }}
+              nodeTypes={nodeTypes}
+              defaultEdgeOptions={defaultEdgeOptions}
+              panOnDrag={panOnDrag}
+              fitView
+              className="bg-black"
+            >
+              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#3e3e44" />
+            </ReactFlow>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {isLoading && (
+        <motion.div
+          key="loading"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="absolute inset-0 bg-black flex items-center justify-center"
+        >
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-gray-2000 border-t-foreground rounded-full animate-spin" />
+            <span className="text-sm text-gray-1700">Loading workspace...</span>
+          </div>
+        </motion.div>
+      )}
+    </div>
   )
 }
 
@@ -144,6 +177,7 @@ interface FlowCanvasProps {
   onInit?: (instance: ReactFlowInstance) => void
   onNodesUpdate?: (nodes: FlowNode[]) => void
   panOnDrag?: boolean
+  isLoading?: boolean
 }
 
 export function FlowCanvas(props: FlowCanvasProps) {

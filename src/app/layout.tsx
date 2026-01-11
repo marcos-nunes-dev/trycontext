@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/contexts/auth-context";
 import { ThemeProvider } from "next-themes";
 import { getServerUser, getServerSession } from "@/lib/auth/server";
+import { Toaster } from "@/components/ui/toast";
 
 const geist = Geist({
   variable: "--font-geist",
@@ -22,8 +23,10 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({
   children,
+  modal,
 }: Readonly<{
   children: React.ReactNode;
+  modal: React.ReactNode;
 }>) {
   const user = await getServerUser();
   const session = await getServerSession();
@@ -36,6 +39,8 @@ export default async function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
           <AuthProvider initialUser={user} initialSession={session}>
             {children}
+            {modal}
+            <Toaster />
           </AuthProvider>
         </ThemeProvider>
       </body>

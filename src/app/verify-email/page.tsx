@@ -45,10 +45,8 @@ export default function VerifyEmailPage() {
       setStatus('success')
       setMessage('Email verified successfully! You can now sign in.')
       
-      // Redirect to signin after 2 seconds
-      setTimeout(() => {
-        router.push('/signin')
-      }, 2000)
+      // Redirect to signin
+      router.push('/signin')
     } catch (err: any) {
       setStatus('error')
       setMessage(err.message || 'An error occurred during verification')

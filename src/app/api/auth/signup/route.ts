@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
   try {
-    const { email, password, name } = await request.json()
+    const { email, password, name, invitationToken } = await request.json()
 
     if (!email || !password) {
       return NextResponse.json(
@@ -14,6 +14,12 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
+    // Build email redirect URL - include invitation token if present
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const emailRedirectTo = invitationToken 
+      ? `${baseUrl}/accept-invitation/${invitationToken}`
+      : `${baseUrl}/verify-email`
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -21,7 +27,7 @@ export async function POST(request: Request) {
         data: {
           name: name || '',
         },
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/verify-email`,
+        emailRedirectTo,
       },
     })
 
@@ -32,7 +38,9 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         user: data.user,
-        message: 'Sign up successful. Please check your email to verify your account.',
+        message: invitationToken 
+          ? 'Sign up successful. Redirecting to accept invitation...'
+          : 'Sign up successful. Please check your email to verify your account.',
       },
       { status: 201 }
     )

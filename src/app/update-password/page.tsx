@@ -3,20 +3,24 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Lock, ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Logo } from '@/components/ui/logo'
-import { Lock, AlertCircle, CheckCircle2, ChevronLeft } from 'lucide-react'
+import { LoadingButton } from '@/components/ui/loading/loading-button'
+import { FormSection } from '@/components/ui/form/form-section'
+import { AuthFormField } from '@/components/auth/auth-form-field'
+import { AuthErrorMessage } from '@/components/auth/auth-error-message'
+import { AuthSuccessMessage } from '@/components/auth/auth-success-message'
+import { useAction } from '@/hooks/use-action'
+import { updatePasswordAction } from '@/app/actions/auth'
 import { createClient } from '@/lib/supabase/client'
 
 export default function UpdatePasswordPage() {
   const router = useRouter()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
   const [checkingSession, setCheckingSession] = useState(true)
+  const [success, setSuccess] = useState(false)
 
   useEffect(() => {
     const checkSession = async () => {
@@ -34,49 +38,38 @@ export default function UpdatePasswordPage() {
     checkSession()
   }, [router])
 
+  const { execute: handleUpdatePassword, isPending, error } = useAction(updatePasswordAction, {
+    onSuccess: () => {
+      setSuccess(true)
+      router.push('/signin')
+    },
+  })
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setSuccess(false)
-
+    
+    // Client-side validation
     if (password !== confirmPassword) {
-      setError('Passwords do not match')
-      setLoading(false)
       return
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters long')
-      setLoading(false)
       return
     }
 
-    try {
-      const response = await fetch('/api/auth/update-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to update password')
-      }
-
-      setSuccess(true)
-      
-      // Redirect to signin after 2 seconds
-      setTimeout(() => {
-        router.push('/signin')
-      }, 2000)
-    } catch (err: any) {
-      setError(err.message || 'An error occurred')
-    } finally {
-      setLoading(false)
-    }
+    setSuccess(false)
+    await handleUpdatePassword({ password })
   }
+
+  // Client-side validation errors
+  const validationError = 
+    password && confirmPassword && password !== confirmPassword
+      ? 'Passwords do not match'
+      : password && password.length < 6
+      ? 'Password must be at least 6 characters long'
+      : null
+
+  const displayError = error || validationError
 
   if (checkingSession) {
     return (
@@ -94,64 +87,51 @@ export default function UpdatePasswordPage() {
         </div>
 
         <div className="space-y-4 rounded-lg border p-6">
-          <div className="space-y-2">
-            <h1 className="font-heading text-2xl font-bold">Update Password</h1>
-            <p className="text-muted-foreground text-sm">
-              Enter your new password below.
-            </p>
-          </div>
+          <FormSection
+            title="Update Password"
+            description="Enter your new password below."
+          />
 
-          {error && (
-            <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-              <AlertCircle className="size-4" />
-              <span>{error}</span>
-            </div>
-          )}
+          {displayError && <AuthErrorMessage message={displayError} />}
 
           {success && (
-            <div className="flex flex-col items-center gap-2 rounded-md bg-green-500/10 p-4 text-center text-sm text-green-600 dark:text-green-400">
-              <CheckCircle2 className="size-5" />
-              <span>Password updated successfully! Redirecting to sign in...</span>
-            </div>
+            <AuthSuccessMessage 
+              message="Password updated successfully! Redirecting to sign in..."
+              className="flex-col items-center p-4 text-center"
+            />
           )}
 
           {!success && (
             <form className="space-y-4" onSubmit={handleSubmit}>
-              <div className="relative h-max">
-                <Input
-                  placeholder="New password"
-                  className="peer ps-9"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                  minLength={6}
-                />
-                <div className="text-muted-foreground pointer-events-none absolute inset-y-0 start-0 flex items-center justify-center ps-3 peer-disabled:opacity-50">
-                  <Lock className="size-4" aria-hidden="true" />
-                </div>
-              </div>
+              <AuthFormField
+                icon={<Lock className="size-4" aria-hidden="true" />}
+                inputProps={{
+                  placeholder: 'New password',
+                  type: 'password',
+                  value: password,
+                  onChange: (e) => setPassword(e.target.value),
+                  required: true,
+                  disabled: isPending,
+                  minLength: 6,
+                }}
+              />
 
-              <div className="relative h-max">
-                <Input
-                  placeholder="Confirm new password"
-                  className="peer ps-9"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                  minLength={6}
-                />
-                <div className="text-muted-foreground pointer-events-none absolute inset-y-0 start-0 flex items-center justify-center ps-3 peer-disabled:opacity-50">
-                  <Lock className="size-4" aria-hidden="true" />
-                </div>
-              </div>
+              <AuthFormField
+                icon={<Lock className="size-4" aria-hidden="true" />}
+                inputProps={{
+                  placeholder: 'Confirm new password',
+                  type: 'password',
+                  value: confirmPassword,
+                  onChange: (e) => setConfirmPassword(e.target.value),
+                  required: true,
+                  disabled: isPending,
+                  minLength: 6,
+                }}
+              />
 
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Updating...' : 'Update Password'}
-              </Button>
+              <LoadingButton type="submit" className="w-full" isLoading={isPending}>
+                Update Password
+              </LoadingButton>
             </form>
           )}
 

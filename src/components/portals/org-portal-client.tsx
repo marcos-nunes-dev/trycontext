@@ -1,26 +1,16 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
-import {
-  useNodesState,
-  useEdgesState,
-  addEdge,
-  type Connection,
-  type ReactFlowInstance,
-  type Node,
-  type Edge,
-} from '@xyflow/react'
-import { FlowCanvas } from '@/components/org/flow-canvas'
-import { FlowErrorBoundary } from '@/components/org/flow-error-boundary'
+import { useState, useCallback, useEffect } from 'react'
 import { Header } from '@/components/org/header'
 import { Toolbar } from '@/components/org/toolbar'
 import { ContentPanel } from '@/components/org/content-panel'
 import { EmptyWorkspaceState } from '@/components/org/empty-workspace-state'
-import { KBarProviderWrapper } from '@/components/ui/kbar-provider'
+import { CommandPaletteProvider } from '@/contexts/command-palette-context'
+import { CommandPalette } from '@/components/ui/command-palette'
+import { FlowContainer } from '@/components/org/flow/flow-container'
 import { useWorkspace } from '@/hooks/use-workspace'
-import { getLayoutedElements } from '@/lib/flow/layout'
-import { createNode, deleteNode, saveLayout } from '@/app/actions/flow'
+import { useFlowState } from '@/components/org/flow/use-flow-state'
+import { useDialogRouter } from '@/lib/dialogs/dialog-hooks'
 import type { FlowNode, FlowEdge } from '@/types/flow'
 import type { Workspace, WorkspaceMember } from '@/lib/workspaces/server'
 import type { WorkspaceInvitation } from '@/lib/workspaces/invitations'
@@ -45,6 +35,7 @@ interface OrgPortalClientProps {
   pendingInvitations?: WorkspaceInvitation[]
   canManageMembers?: boolean
   currentUserId?: string
+  workspacePermissions?: Record<string, { canEdit: boolean; canDelete: boolean }>
 }
 
 export function OrgPortalClient({
@@ -57,198 +48,24 @@ export function OrgPortalClient({
   pendingInvitations = [],
   canManageMembers = false,
   currentUserId,
+  workspacePermissions = {},
 }: OrgPortalClientProps) {
-  const router = useRouter()
   const { switchToWorkspace, isSwitching } = useWorkspace({
     currentWorkspace,
     workspaces,
   })
   
+  // Use flow state hook for all flow-related logic
+  const flowState = useFlowState({ initialNodes, initialEdges, currentWorkspace })
+  
   // Optimistic state for current workspace - updates immediately
   const [optimisticWorkspace, setOptimisticWorkspace] = useState<Workspace | null>(currentWorkspace)
-  
-  // Use React Flow's optimized state hooks with base types
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes as Node[])
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges as Edge[])
-  
-  const [zoom, setZoom] = useState(1)
-  const [panOnDrag, setPanOnDrag] = useState(false)
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null)
+  const { openDialog } = useDialogRouter()
   
   // Update optimistic workspace when currentWorkspace changes from server
   useEffect(() => {
     setOptimisticWorkspace(currentWorkspace)
   }, [currentWorkspace])
-
-  // Apply initial layout when nodes change (e.g., workspace switch)
-  useEffect(() => {
-    if (initialNodes.length > 0 && initialEdges.length > 0) {
-      const { nodes: layoutedNodes } = getLayoutedElements(initialNodes, initialEdges, 'TB')
-      setNodes(layoutedNodes as Node[])
-      setEdges(initialEdges as Edge[])
-    } else {
-      setNodes(initialNodes as Node[])
-      setEdges(initialEdges as Edge[])
-    }
-  }, [initialNodes, initialEdges, setNodes, setEdges])
-
-  const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
-    [setEdges]
-  )
-
-  const handleInit = useCallback((instance: ReactFlowInstance) => {
-    reactFlowInstanceRef.current = instance
-    // Set initial zoom
-    setZoom(instance.getZoom())
-  }, [])
-
-  const handleZoomIn = useCallback(() => {
-    reactFlowInstanceRef.current?.zoomIn()
-  }, [])
-
-  const handleZoomOut = useCallback(() => {
-    reactFlowInstanceRef.current?.zoomOut()
-  }, [])
-
-  const handleFitView = useCallback(() => {
-    reactFlowInstanceRef.current?.fitView({ padding: 0.2, duration: 300 })
-  }, [])
-
-  const handleZoomChange = useCallback((newZoom: number) => {
-    setZoom(newZoom)
-  }, [])
-
-  // Auto-layout handler - reorganizes all nodes using Dagre
-  const handleAutoLayout = useCallback(() => {
-    const { nodes: layoutedNodes } = getLayoutedElements(
-      nodes as unknown as FlowNode[],
-      edges as FlowEdge[],
-      'TB'
-    )
-    setNodes(layoutedNodes as Node[])
-    
-    // Fit view after layout with animation
-    setTimeout(() => {
-      reactFlowInstanceRef.current?.fitView({ padding: 0.2, duration: 300 })
-    }, 50)
-  }, [nodes, edges, setNodes])
-
-  // Handle nodes update from collision resolution
-  const handleNodesUpdate = useCallback((updatedNodes: FlowNode[]) => {
-    setNodes(updatedNodes as Node[])
-    
-    // Save layout to database when nodes are moved
-    if (currentWorkspace) {
-      const nodesToSave = updatedNodes.map((node) => ({
-        id: node.id,
-        position: node.position || { x: 0, y: 0 },
-        type: node.type,
-      }))
-      saveLayout(currentWorkspace.id, nodesToSave).catch((error) => {
-        console.error('Failed to save layout:', error)
-      })
-    }
-  }, [setNodes, currentWorkspace])
-
-  const handleAddEpic = useCallback(async () => {
-    if (!currentWorkspace) return
-    
-    try {
-      const result = await createNode(currentWorkspace.id, 'epic', {
-        title: 'New Epic',
-        description: '',
-        position: { x: 100, y: 100 },
-      })
-      if (result.success) {
-        router.refresh()
-      }
-    } catch (error) {
-      console.error('Failed to create epic:', error)
-    }
-  }, [currentWorkspace, router])
-
-  const handleAddStory = useCallback(async () => {
-    if (!currentWorkspace) return
-    
-    // Find first epic to attach story to, or create standalone
-    const firstEpic = (nodes as FlowNode[]).find((n) => n.type === 'epic')
-    
-    try {
-      const result = await createNode(currentWorkspace.id, 'story', {
-        title: 'New Story',
-        description: '',
-        epicId: firstEpic?.id,
-        position: { x: 100, y: 200 },
-      })
-      if (result.success) {
-        router.refresh()
-      }
-    } catch (error) {
-      console.error('Failed to create story:', error)
-    }
-  }, [currentWorkspace, nodes, router])
-
-  const handleAddTask = useCallback(async () => {
-    if (!currentWorkspace) return
-    
-    // Find first story to attach task to, or create standalone
-    const firstStory = (nodes as FlowNode[]).find((n) => n.type === 'story')
-    
-    try {
-      const result = await createNode(currentWorkspace.id, 'task', {
-        title: 'New Task',
-        description: '',
-        storyId: firstStory?.id,
-        priority: 'medium',
-        position: { x: 100, y: 300 },
-      })
-      if (result.success) {
-        router.refresh()
-      }
-    } catch (error) {
-      console.error('Failed to create task:', error)
-    }
-  }, [currentWorkspace, nodes, router])
-
-  const handleUploadContent = useCallback(() => {
-    // TODO: Implement upload content functionality
-  }, [])
-
-  const handleDeleteSelected = useCallback(async () => {
-    if (!currentWorkspace) return
-    
-    const selectedNodes = (nodes as FlowNode[]).filter((n) => n.selected)
-    
-    if (selectedNodes.length === 0) return
-
-    try {
-      await Promise.all(
-        selectedNodes.map((node) => {
-          if (node.type === 'epic' || node.type === 'story' || node.type === 'task') {
-            return deleteNode(currentWorkspace.id, node.id, node.type)
-          }
-          return Promise.resolve()
-        })
-      )
-      router.refresh()
-    } catch (error) {
-      console.error('Failed to delete nodes:', error)
-    }
-  }, [currentWorkspace, nodes, router])
-
-  const handleExport = useCallback(() => {
-    // TODO: Implement export functionality
-  }, [])
-
-  const handleSettings = useCallback(() => {
-    // TODO: Implement settings functionality
-  }, [])
-
-  const handleHelp = useCallback(() => {
-    // TODO: Implement help functionality
-  }, [])
 
   const handleWorkspaceSelect = useCallback(async (workspaceId: string) => {
     if (workspaceId === currentWorkspace?.id) {
@@ -266,61 +83,78 @@ export function OrgPortalClient({
   }, [switchToWorkspace, currentWorkspace, workspaces])
 
   const handleCreateWorkspace = useCallback(() => {
-    // Trigger opening the dialog in the Header component via custom event
-    document.dispatchEvent(new CustomEvent('open-create-workspace-dialog'))
+    openDialog('/org/create-workspace')
+  }, [openDialog])
+
+  const handleManageWorkspaces = useCallback(() => {
+    openDialog('/org/workspace-management')
+  }, [openDialog])
+
+  const handleSettings = useCallback(() => {
+    openDialog('/org/workspace-management')
+  }, [openDialog])
+
+  const handleUploadContent = useCallback(() => {
+    // TODO: Implement upload content functionality
+  }, [])
+
+  const handleExport = useCallback(() => {
+    // TODO: Implement export functionality
+  }, [])
+
+  const handleHelp = useCallback(() => {
+    // TODO: Implement help functionality
   }, [])
 
   return (
-    <KBarProviderWrapper
-      workspaces={workspaces}
-      currentWorkspace={optimisticWorkspace}
-      onWorkspaceSelect={handleWorkspaceSelect}
-      onCreateWorkspace={handleCreateWorkspace}
-      isSwitching={isSwitching}
-    >
+    <CommandPaletteProvider>
+      <CommandPalette
+        workspaces={workspaces}
+        currentWorkspace={optimisticWorkspace}
+        onWorkspaceSelect={handleWorkspaceSelect}
+        onCreateWorkspace={handleCreateWorkspace}
+        onManageWorkspaces={handleManageWorkspaces}
+        isSwitching={isSwitching}
+      />
       <div className="flex h-screen w-full flex-col bg-background">
         <Header
           currentWorkspace={optimisticWorkspace}
           workspaces={workspaces}
-          zoom={zoom}
-          onZoomIn={handleZoomIn}
-          onZoomOut={handleZoomOut}
-          onFitView={handleFitView}
-          panOnDrag={panOnDrag}
-          onPanModeChange={setPanOnDrag}
+          zoom={flowState.zoom}
+          onZoomIn={flowState.handleZoomIn}
+          onZoomOut={flowState.handleZoomOut}
+          onFitView={flowState.handleFitView}
+          panOnDrag={flowState.panOnDrag}
+          onPanModeChange={flowState.setPanOnDrag}
           members={members}
-          pendingInvitations={pendingInvitations}
           canManageMembers={canManageMembers}
-          currentUserId={currentUserId}
-          onCreateWorkspace={handleCreateWorkspace}
         />
       {currentWorkspace ? (
         <div className="flex flex-1 overflow-hidden relative">
           <Toolbar
-            onAddEpic={handleAddEpic}
-            onAddStory={handleAddStory}
-            onAddTask={handleAddTask}
+            onAddEpic={flowState.handleAddEpic}
+            onAddStory={flowState.handleAddStory}
+            onAddTask={flowState.handleAddTask}
             onUploadContent={handleUploadContent}
-            onDeleteSelected={handleDeleteSelected}
+            onDeleteSelected={flowState.handleDeleteSelected}
             onExport={handleExport}
             onSettings={handleSettings}
             onHelp={handleHelp}
-            onAutoLayout={handleAutoLayout}
+            onAutoLayout={flowState.handleAutoLayout}
           />
           <div className="flex-1 relative">
-            <FlowErrorBoundary>
-              <FlowCanvas
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                onZoomChange={handleZoomChange}
-                onInit={handleInit}
-                onNodesUpdate={handleNodesUpdate}
-                panOnDrag={panOnDrag}
-              />
-            </FlowErrorBoundary>
+            <FlowContainer
+              nodes={flowState.nodes}
+              edges={flowState.edges}
+              onNodesChange={flowState.onNodesChange}
+              onEdgesChange={flowState.onEdgesChange}
+              onConnect={flowState.onConnect}
+              onZoomChange={flowState.handleZoomChange}
+              onInit={flowState.handleInit}
+              onNodesUpdate={flowState.handleNodesUpdate}
+              panOnDrag={flowState.panOnDrag}
+              isLoading={isSwitching}
+            />
             <ContentPanel folderItems={folderItems} />
           </div>
         </div>
@@ -330,6 +164,6 @@ export function OrgPortalClient({
         />
       )}
       </div>
-    </KBarProviderWrapper>
+    </CommandPaletteProvider>
   )
 }

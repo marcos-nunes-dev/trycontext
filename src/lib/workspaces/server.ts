@@ -169,20 +169,12 @@ export async function getCurrentWorkspace(userId: string): Promise<Workspace | n
 
 /**
  * Set the current workspace for a user
+ * RLS policies on user_workspace_preferences and workspaces tables will enforce access control
  */
 export async function setCurrentWorkspace(userId: string, workspaceId: string): Promise<boolean> {
   const supabase = await createClient()
-  
-  // Verify user has access to this workspace
-  const workspaces = await getUserWorkspaces(userId)
-  const hasAccess = workspaces.some((ws) => ws.id === workspaceId)
-  
-  if (!hasAccess) {
-    console.error('User does not have access to workspace:', workspaceId)
-    return false
-  }
 
-  // Upsert the preference
+  // Upsert the preference - RLS will prevent unauthorized access
   const { error } = await supabase
     .from('user_workspace_preferences')
     .upsert(
@@ -301,6 +293,8 @@ export async function getWorkspaceMembers(workspaceId: string): Promise<Workspac
   }
 
   // Get user details via service role client
+  // Note: Supabase admin API's listUsers() doesn't support filtering by IDs,
+  // so we must load all users and filter client-side. This is a limitation of the API.
   const userDetailsMap = new Map<string, { email: string; user_metadata?: any }>()
   
   try {
@@ -336,9 +330,14 @@ export async function getWorkspaceMembers(workspaceId: string): Promise<Workspac
     } : undefined,
   })
 
-  // Add other members with user details
+  // Add other members with user details (exclude owner, as they're already added)
   if (members) {
     members.forEach((member) => {
+      // Skip if this member is the owner (owner is already added above)
+      if (member.user_id === workspace.owner_id) {
+        return
+      }
+      
       const userDetails = userDetailsMap.get(member.user_id)
       allMembers.push({
         ...member,
@@ -531,6 +530,189 @@ export async function updateMemberRole(
   if (error) {
     console.error('Error updating member role:', error)
     return { success: false, error: 'Failed to update member role' }
+  }
+
+  return { success: true }
+}
+
+/**
+ * Transfer workspace ownership from current owner to another user
+ */
+export async function transferWorkspaceOwnership(
+  workspaceId: string,
+  currentOwnerId: string,
+  newOwnerId: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+
+  // Validate: cannot transfer to self
+  if (currentOwnerId === newOwnerId) {
+    return { success: false, error: 'Cannot transfer ownership to yourself' }
+  }
+
+  // Verify current user is the owner
+  const { data: workspace, error: workspaceError } = await supabase
+    .from('workspaces')
+    .select('owner_id')
+    .eq('id', workspaceId)
+    .single()
+
+  if (workspaceError || !workspace) {
+    console.error('Error fetching workspace:', workspaceError)
+    return { success: false, error: 'Workspace not found' }
+  }
+
+  if (workspace.owner_id !== currentOwnerId) {
+    return { success: false, error: 'Only the workspace owner can transfer ownership' }
+  }
+
+  // Verify new owner is a member of the workspace
+  const newOwnerRole = await getWorkspaceMemberRole(workspaceId, newOwnerId)
+  if (!newOwnerRole) {
+    return { success: false, error: 'New owner must be a member of the workspace' }
+  }
+
+  // Check if new owner is already in workspace_members table
+  const { data: existingMember } = await supabase
+    .from('workspace_members')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', newOwnerId)
+    .single()
+
+  // Step 1: Update workspace owner_id
+  const { error: updateError } = await supabase
+    .from('workspaces')
+    .update({ owner_id: newOwnerId })
+    .eq('id', workspaceId)
+    .eq('owner_id', currentOwnerId)
+
+  if (updateError) {
+    console.error('Error updating workspace owner:', updateError)
+    return { success: false, error: 'Failed to transfer ownership' }
+  }
+
+  // Step 2: Remove new owner from workspace_members (owner role is implicit)
+  if (existingMember) {
+    const { error: removeError } = await supabase
+      .from('workspace_members')
+      .delete()
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', newOwnerId)
+
+    if (removeError) {
+      console.error('Error removing new owner from members:', removeError)
+      // Continue anyway - the ownership is transferred
+    }
+  }
+
+  // Step 3: Add old owner to workspace_members as admin
+  // Check if old owner is already a member
+  const { data: oldOwnerMember } = await supabase
+    .from('workspace_members')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', currentOwnerId)
+    .single()
+
+  if (!oldOwnerMember) {
+    // Add old owner as admin
+    const { error: addError } = await supabase
+      .from('workspace_members')
+      .insert({
+        workspace_id: workspaceId,
+        user_id: currentOwnerId,
+        role: 'admin',
+      })
+
+    if (addError) {
+      console.error('Error adding old owner as member:', addError)
+      // Continue anyway - the ownership is transferred
+    }
+  } else {
+    // Update existing member entry to admin
+    const { error: updateMemberError } = await supabase
+      .from('workspace_members')
+      .update({ role: 'admin' })
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', currentOwnerId)
+
+    if (updateMemberError) {
+      console.error('Error updating old owner role:', updateMemberError)
+      // Continue anyway - the ownership is transferred
+    }
+  }
+
+  return { success: true }
+}
+
+/**
+ * Update workspace name
+ */
+export async function updateWorkspaceName(
+  workspaceId: string,
+  userId: string,
+  newName: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+
+  // Validate name
+  if (!newName || newName.trim().length === 0) {
+    return { success: false, error: 'Workspace name is required' }
+  }
+
+  if (newName.length > 100) {
+    return { success: false, error: 'Workspace name must be 100 characters or less' }
+  }
+
+  // Check if user is owner or admin (import canEditWorkspace)
+  const { canEditWorkspace } = await import('@/lib/workspaces/permissions')
+  const canEdit = await canEditWorkspace(workspaceId, userId)
+  if (!canEdit) {
+    return { success: false, error: 'Only workspace owners and admins can edit workspace name' }
+  }
+
+  // Update workspace name
+  const { error } = await supabase
+    .from('workspaces')
+    .update({ name: newName.trim() })
+    .eq('id', workspaceId)
+
+  if (error) {
+    console.error('Error updating workspace name:', error)
+    return { success: false, error: 'Failed to update workspace name' }
+  }
+
+  return { success: true }
+}
+
+/**
+ * Delete workspace
+ * Only owners can delete workspaces
+ * Database CASCADE will handle related data deletion automatically
+ */
+export async function deleteWorkspace(
+  workspaceId: string,
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+
+  // Check permissions (only owners can delete)
+  const { canDeleteWorkspace } = await import('@/lib/workspaces/permissions')
+  const canDelete = await canDeleteWorkspace(workspaceId, userId)
+  if (!canDelete) {
+    return { success: false, error: 'Only workspace owners can delete workspaces' }
+  }
+
+  // Delete workspace (CASCADE will handle related data)
+  const { error } = await supabase
+    .from('workspaces')
+    .delete()
+    .eq('id', workspaceId)
+
+  if (error) {
+    console.error('Error deleting workspace:', error)
+    return { success: false, error: 'Failed to delete workspace' }
   }
 
   return { success: true }

@@ -26,12 +26,11 @@ export function useWorkspace({ currentWorkspace, workspaces }: UseWorkspaceProps
       setError(null)
       try {
         await switchWorkspace(workspaceId)
-        // Refresh server components to get fresh data without full page reload
-        router.refresh()
+        // revalidatePath in the server action already triggers a refresh,
+        // so router.refresh() is not needed here
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to switch workspace'
         setError(errorMessage)
-        console.error('Failed to switch workspace:', err)
         throw err
       } finally {
         setIsSwitching(false)
@@ -58,7 +57,6 @@ export function useWorkspace({ currentWorkspace, workspaces }: UseWorkspaceProps
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to create workspace'
         setError(errorMessage)
-        console.error('Failed to create workspace:', err)
         throw err
       } finally {
         setIsCreating(false)

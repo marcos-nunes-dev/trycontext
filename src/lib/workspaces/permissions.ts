@@ -100,6 +100,17 @@ export async function canManageMembers(
 }
 
 /**
+ * Check if user can transfer workspace ownership
+ * Only workspace owners can transfer ownership
+ */
+export async function canTransferOwnership(
+  workspaceId: string,
+  userId: string
+): Promise<boolean> {
+  return await isWorkspaceOwner(workspaceId, userId)
+}
+
+/**
  * Check if user can invite users to workspace
  * Only workspace owners can invite
  */

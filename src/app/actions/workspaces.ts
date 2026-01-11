@@ -10,13 +10,21 @@ import {
   removeMemberFromWorkspace,
   updateMemberRole,
   searchUserByEmail,
+  transferWorkspaceOwnership,
+  updateWorkspaceName as updateWorkspaceNameServer,
+  deleteWorkspace as deleteWorkspaceServer,
+  getUserWorkspaces,
+  getCurrentWorkspace as getCurrentWorkspaceServer,
 } from '@/lib/workspaces/server'
 import {
   inviteUserToWorkspace as inviteUserToWorkspaceServer,
   acceptInvitation as acceptInvitationServer,
   getPendingInvitations,
+  cancelInvitation as cancelInvitationServer,
+  resendInvitation as resendInvitationServer,
 } from '@/lib/workspaces/invitations'
 import { sendInvitationEmail } from '@/lib/email/invitations'
+import { canTransferOwnership } from '@/lib/workspaces/permissions'
 
 export async function switchWorkspace(workspaceId: string) {
   const user = await getServerUser()
@@ -216,4 +224,127 @@ export async function searchUserByEmailAction(email: string) {
   // This will be called from invite dialog, so we'll check permissions there
   const result = await searchUserByEmail(email)
   return result
+}
+
+export async function cancelWorkspaceInvitation(
+  workspaceId: string,
+  invitationId: string
+) {
+  const user = await getServerUser()
+  if (!user) {
+    throw new Error('Unauthorized')
+  }
+
+  const result = await cancelInvitationServer(invitationId, workspaceId, user.id)
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to cancel invitation')
+  }
+
+  revalidatePath('/org')
+  return { success: true }
+}
+
+export async function resendWorkspaceInvitation(
+  workspaceId: string,
+  invitationId: string
+) {
+  const user = await getServerUser()
+  if (!user) {
+    throw new Error('Unauthorized')
+  }
+
+  const result = await resendInvitationServer(invitationId, workspaceId, user.id)
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to resend invitation')
+  }
+
+  revalidatePath('/org')
+  return { success: true }
+}
+
+export async function transferOwnership(
+  workspaceId: string,
+  newOwnerId: string
+) {
+  const user = await getServerUser()
+  if (!user) {
+    throw new Error('Unauthorized')
+  }
+
+  // Validate: cannot transfer to self
+  if (user.id === newOwnerId) {
+    throw new Error('Cannot transfer ownership to yourself')
+  }
+
+  // Check permissions (only owners can transfer ownership)
+  const canTransfer = await canTransferOwnership(workspaceId, user.id)
+  if (!canTransfer) {
+    throw new Error('Only workspace owners can transfer ownership')
+  }
+
+  // Transfer ownership
+  const result = await transferWorkspaceOwnership(
+    workspaceId,
+    user.id,
+    newOwnerId
+  )
+
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to transfer ownership')
+  }
+
+  revalidatePath('/org')
+  return { success: true }
+}
+
+export async function updateWorkspaceName(workspaceId: string, name: string) {
+  const user = await getServerUser()
+  if (!user) {
+    throw new Error('Unauthorized')
+  }
+
+  // Validate name
+  if (!name || name.trim().length === 0) {
+    throw new Error('Workspace name is required')
+  }
+
+  if (name.length > 100) {
+    throw new Error('Workspace name must be 100 characters or less')
+  }
+
+  const result = await updateWorkspaceNameServer(workspaceId, user.id, name)
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to update workspace name')
+  }
+
+  revalidatePath('/org')
+  return { success: true }
+}
+
+export async function deleteWorkspace(workspaceId: string) {
+  const user = await getServerUser()
+  if (!user) {
+    throw new Error('Unauthorized')
+  }
+
+  // Check if this is the current workspace
+  const currentWorkspace = await getCurrentWorkspaceServer(user.id)
+  const isCurrentWorkspace = currentWorkspace?.id === workspaceId
+
+  // Delete workspace
+  const result = await deleteWorkspaceServer(workspaceId, user.id)
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to delete workspace')
+  }
+
+  // If we deleted the current workspace, switch to another one
+  if (isCurrentWorkspace) {
+    const workspaces = await getUserWorkspaces(user.id)
+    if (workspaces.length > 0) {
+      await setCurrentWorkspace(user.id, workspaces[0].id)
+    }
+  }
+
+  revalidatePath('/org')
+  return { success: true }
 }
