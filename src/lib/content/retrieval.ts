@@ -7,6 +7,40 @@ import { createClient } from '@/lib/supabase/server'
 import { OpenAIEmbeddings } from '@langchain/openai'
 import type { ContentLinkScope } from './server'
 
+/**
+ * Parse embedding from various formats (array, string, etc.)
+ * @param embedding - The embedding value from database
+ * @param chunkId - Chunk ID for error reporting
+ * @returns Parsed embedding array or null if parsing fails
+ */
+function parseEmbedding(embedding: unknown, chunkId: string): number[] | null {
+  if (Array.isArray(embedding)) {
+    return embedding
+  }
+  
+  if (typeof embedding === 'string') {
+    try {
+      const cleaned = embedding.trim()
+      if (cleaned.startsWith('[') && cleaned.endsWith(']')) {
+        return cleaned.slice(1, -1).split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v))
+      }
+      // Try JSON parse as fallback
+      return JSON.parse(embedding)
+    } catch (parseError) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`[Retrieval] Failed to parse embedding for chunk ${chunkId}:`, embedding?.substring(0, 50), parseError)
+      }
+      return null
+    }
+  }
+  
+  // Unknown type
+  if (process.env.NODE_ENV === 'development') {
+    console.warn(`[Retrieval] Unknown embedding type for chunk ${chunkId}:`, typeof embedding)
+  }
+  return null
+}
+
 export interface RetrievalResult {
   chunkId: string
   contentId: string
@@ -24,6 +58,10 @@ export interface RetrievalOptions {
 
 /**
  * Retrieve relevant content chunks using vector similarity search
+ * 
+ * @param options - Retrieval options including workspace ID, query, scope, and result count
+ * @returns Array of retrieval results sorted by similarity score
+ * @throws Error if OpenAI API key is not set or if database query fails
  */
 export async function retrieveContentChunks(
   options: RetrievalOptions
@@ -86,37 +124,43 @@ export async function retrieveContentChunks(
   const { data: chunks, error } = await queryBuilder.limit(k * 2) // Fetch more to account for filtering
 
   if (error) {
-    console.error('[Retrieval] Error fetching chunks:', error)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[Retrieval] Error fetching chunks:', error)
+    }
     throw new Error(`Failed to retrieve chunks: ${error.message}`)
   }
 
-  console.log(`[Retrieval] Query returned ${chunks?.length || 0} chunks (limit: ${k * 2})`)
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[Retrieval] Query returned ${chunks?.length || 0} chunks (limit: ${k * 2})`)
+  }
 
   if (!chunks || chunks.length === 0) {
-    // Debug: Check if chunks exist at all for this workspace
-    const { data: allChunks } = await supabase
-      .from('content_chunks')
-      .select('id, content_id, embedding')
-      .eq('workspace_id', workspaceId)
-      .limit(5)
-    
-    const { data: chunksWithEmbeddings } = await supabase
-      .from('content_chunks')
-      .select('id, content_id, embedding')
-      .eq('workspace_id', workspaceId)
-      .not('embedding', 'is', null)
-      .limit(5)
-    
-    console.log(`[Retrieval Debug] Total chunks in workspace: ${allChunks?.length || 0}`)
-    console.log(`[Retrieval Debug] Chunks with embeddings: ${chunksWithEmbeddings?.length || 0}`)
-    if (allChunks && allChunks.length > 0) {
-      console.log(`[Retrieval Debug] Sample chunks:`, allChunks.map(c => ({
-        id: c.id,
-        content_id: c.content_id,
-        has_embedding: !!c.embedding,
-        embedding_type: typeof c.embedding,
-        embedding_is_array: Array.isArray(c.embedding)
-      })))
+    // Debug: Check if chunks exist at all for this workspace (development only)
+    if (process.env.NODE_ENV === 'development') {
+      const { data: allChunks } = await supabase
+        .from('content_chunks')
+        .select('id, content_id, embedding')
+        .eq('workspace_id', workspaceId)
+        .limit(5)
+      
+      const { data: chunksWithEmbeddings } = await supabase
+        .from('content_chunks')
+        .select('id, content_id, embedding')
+        .eq('workspace_id', workspaceId)
+        .not('embedding', 'is', null)
+        .limit(5)
+      
+      console.log(`[Retrieval Debug] Total chunks in workspace: ${allChunks?.length || 0}`)
+      console.log(`[Retrieval Debug] Chunks with embeddings: ${chunksWithEmbeddings?.length || 0}`)
+      if (allChunks && allChunks.length > 0) {
+        console.log(`[Retrieval Debug] Sample chunks:`, allChunks.map(c => ({
+          id: c.id,
+          content_id: c.content_id,
+          has_embedding: !!c.embedding,
+          embedding_type: typeof c.embedding,
+          embedding_is_array: Array.isArray(c.embedding)
+        })))
+      }
     }
     return []
   }
@@ -128,28 +172,9 @@ export async function retrieveContentChunks(
         return null
       }
 
-      // Parse embedding (pgvector returns as string like "[0.1,0.2,...]" or as array)
-      let embedding: number[]
-      if (Array.isArray(chunk.embedding)) {
-        embedding = chunk.embedding
-      } else if (typeof chunk.embedding === 'string') {
-        // pgvector returns embeddings as strings like "[0.1,0.2,0.3,...]"
-        try {
-          // Remove brackets and split by comma, then parse as floats
-          const cleaned = chunk.embedding.trim()
-          if (cleaned.startsWith('[') && cleaned.endsWith(']')) {
-            embedding = cleaned.slice(1, -1).split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v))
-          } else {
-            // Try JSON parse as fallback
-            embedding = JSON.parse(chunk.embedding)
-          }
-        } catch {
-          console.warn(`[Retrieval] Failed to parse embedding for chunk ${chunk.id}:`, chunk.embedding?.substring(0, 50))
-          return null
-        }
-      } else {
-        // Unknown type
-        console.warn(`[Retrieval] Unknown embedding type for chunk ${chunk.id}:`, typeof chunk.embedding)
+      // Parse embedding using extracted function
+      const embedding = parseEmbedding(chunk.embedding, chunk.id)
+      if (!embedding) {
         return null
       }
 
@@ -174,6 +199,10 @@ export async function retrieveContentChunks(
 /**
  * Retrieve content chunks combining local and global scope
  * Local scope takes priority, but global scope is also included
+ * 
+ * @param options - Retrieval options including workspace ID, query, scope, and result count
+ * @returns Array of retrieval results sorted by similarity score (deduplicated)
+ * @throws Error if OpenAI API key is not set or if database query fails
  */
 export async function retrieveContentChunksWithGlobal(
   options: RetrievalOptions
@@ -219,6 +248,10 @@ export async function retrieveContentChunksWithGlobal(
 
 /**
  * Compute cosine similarity between two vectors
+ * 
+ * @param a - First vector
+ * @param b - Second vector
+ * @returns Cosine similarity score between 0 and 1, or 0 if vectors have different lengths
  */
 function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) {

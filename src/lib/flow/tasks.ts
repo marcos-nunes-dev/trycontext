@@ -35,7 +35,7 @@ export function convertTasksToNodesAndEdges(tasks: Array<{
   position_y: number
   content_ids: string[] | null
   metadata?: Record<string, unknown> | null
-}>): { nodes: FlowNode[]; edges: FlowEdge[] } {
+}>, workspaceId: string): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const nodes: FlowNode[] = []
   const edges: FlowEdge[] = []
 
@@ -53,6 +53,8 @@ export function convertTasksToNodesAndEdges(tasks: Array<{
     if (task.metadata) {
       node.data.metadata = task.metadata
     }
+    // Add workspaceId to node data for dialog access
+    ;(node.data as { workspaceId?: string }).workspaceId = workspaceId
     nodes.push(node)
 
     // Create edge from story to task

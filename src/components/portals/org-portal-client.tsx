@@ -8,6 +8,7 @@ import { EmptyWorkspaceState } from '@/components/org/empty-workspace-state'
 import { CommandPaletteProvider } from '@/contexts/command-palette-context'
 import { CommandPalette } from '@/components/ui/command-palette'
 import { FlowContainer } from '@/components/org/flow/flow-container'
+import { PlanGenerationProgressDialog } from '@/components/org/dialogs/plan-generation-progress-dialog'
 import { useWorkspace } from '@/hooks/use-workspace'
 import { useFlowState } from '@/components/org/flow/use-flow-state'
 import { useDialogRouter } from '@/lib/dialogs/dialog-hooks'
@@ -119,16 +120,20 @@ export function OrgPortalClient({
     // TODO: Implement help functionality
   }, [])
 
-  const { execute: executeGeneratePlan, isPending: isGeneratingPlan } = useAction(
+  const { execute: executeGeneratePlan, isPending: isGeneratingPlan, error: generatePlanError } = useAction(
     async (workspaceId: string) => {
       return generateDraftPlan(workspaceId)
     },
     {
       onSuccess: () => {
-        toast.success('Draft plan generated successfully')
+        // Success is shown in the progress dialog completion state
+        // Small delay to let user see completion before toast
+        setTimeout(() => {
+          toast.success('Draft plan generated successfully')
+        }, 1500)
       },
       onError: (err) => {
-        toast.error(err instanceof Error ? err.message : String(err))
+        // Error is shown in the progress dialog
       },
     }
   )
@@ -214,6 +219,12 @@ export function OrgPortalClient({
           workspaces={workspaces}
         />
       )}
+      
+      <PlanGenerationProgressDialog
+        open={isGeneratingPlan}
+        isGenerating={isGeneratingPlan}
+        error={generatePlanError}
+      />
       </div>
     </CommandPaletteProvider>
   )

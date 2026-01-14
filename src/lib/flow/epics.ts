@@ -33,7 +33,7 @@ export function convertEpicsToNodes(epics: Array<{
   position_y: number
   content_ids: string[] | null
   metadata?: Record<string, unknown> | null
-}>): FlowNode[] {
+}>, workspaceId: string): FlowNode[] {
   const nodes: FlowNode[] = []
 
   epics.forEach((epic) => {
@@ -48,6 +48,8 @@ export function convertEpicsToNodes(epics: Array<{
     if (epic.metadata) {
       node.data.metadata = epic.metadata
     }
+    // Add workspaceId to node data for dialog access
+    ;(node.data as { workspaceId?: string }).workspaceId = workspaceId
     nodes.push(node)
   })
 

@@ -84,15 +84,7 @@ export async function buildContextTree(workspaceId: string): Promise<ContextTree
     type: 'folder',
     scopeType: 'workspace',
     fileCount: globalFiles.length,
-    children: globalFiles.length > 0 ? [
-      {
-        id: 'global-files',
-        name: 'Files',
-        type: 'folder',
-        children: globalFiles,
-        fileCount: globalFiles.length,
-      },
-    ] : [],
+    children: globalFiles,
   }
 
   // Local Context - Epics
@@ -160,17 +152,6 @@ export async function buildContextTree(workspaceId: string): Promise<ContextTree
           }
         })
 
-        const taskChildren: ContextTreeItem[] = []
-        if (taskFiles.length > 0) {
-          taskChildren.push({
-            id: `task-${taskNode.id}-files`,
-            name: 'Files',
-            type: 'folder',
-            children: taskFiles,
-            fileCount: taskFiles.length,
-          })
-        }
-
         return {
           id: `task-${taskNode.id}`,
           name: taskNode.data.title,
@@ -178,28 +159,11 @@ export async function buildContextTree(workspaceId: string): Promise<ContextTree
           scopeType: 'task',
           scopeId: taskNode.id,
           fileCount: taskFiles.length,
-          children: taskChildren,
+          children: taskFiles,
         }
       })
 
-      const storyChildren: ContextTreeItem[] = []
-      if (storyFiles.length > 0) {
-        storyChildren.push({
-          id: `story-${storyNode.id}-files`,
-          name: 'Files',
-          type: 'folder',
-          children: storyFiles,
-          fileCount: storyFiles.length,
-        })
-      }
-      if (tasks.length > 0) {
-        storyChildren.push({
-          id: `story-${storyNode.id}-tasks`,
-          name: 'Tasks',
-          type: 'folder',
-          children: tasks,
-        })
-      }
+      const storyChildren: ContextTreeItem[] = [...storyFiles, ...tasks]
 
       return {
         id: `story-${storyNode.id}`,
@@ -208,28 +172,11 @@ export async function buildContextTree(workspaceId: string): Promise<ContextTree
         scopeType: 'story',
         scopeId: storyNode.id,
         fileCount: storyFiles.length,
-        children: storyChildren,
+        children: storyChildren.length > 0 ? storyChildren : undefined,
       }
     })
 
-    const epicChildren: ContextTreeItem[] = []
-    if (epicFiles.length > 0) {
-      epicChildren.push({
-        id: `epic-${epicNode.id}-files`,
-        name: 'Files',
-        type: 'folder',
-        children: epicFiles,
-        fileCount: epicFiles.length,
-      })
-    }
-    if (stories.length > 0) {
-      epicChildren.push({
-        id: `epic-${epicNode.id}-stories`,
-        name: 'Stories',
-        type: 'folder',
-        children: stories,
-      })
-    }
+    const epicChildren: ContextTreeItem[] = [...epicFiles, ...stories]
 
     epics.push({
       id: `epic-${epicNode.id}`,
@@ -238,7 +185,7 @@ export async function buildContextTree(workspaceId: string): Promise<ContextTree
       scopeType: 'epic',
       scopeId: epicNode.id,
       fileCount: epicFiles.length,
-      children: epicChildren,
+      children: epicChildren.length > 0 ? epicChildren : undefined,
     })
   }
 
@@ -248,8 +195,8 @@ export async function buildContextTree(workspaceId: string): Promise<ContextTree
     type: 'folder',
     children: epics.length > 0 ? [
       {
-        id: 'epics',
-        name: 'Epics',
+        id: 'identification',
+        name: 'Identification',
         type: 'folder',
         children: epics,
       },

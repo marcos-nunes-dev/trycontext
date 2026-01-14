@@ -22,6 +22,10 @@ export interface UploadContentInput {
 /**
  * Upload and ingest content file
  * Accepts FormData with 'file' field
+ * 
+ * @param formData - FormData containing file, workspaceId, scopeType, and optional scopeId
+ * @returns Success status and contentId if successful
+ * @throws Error if user is unauthorized, workspace access denied, file validation fails, or processing fails
  */
 export async function uploadAndIngestContent(formData: FormData) {
   const user = await getServerUser()
@@ -177,8 +181,11 @@ export async function uploadAndIngestContent(formData: FormData) {
         return analyzeImpactForContent(workspaceId, createdContentId)
       })
       .catch((error) => {
-        console.error('Error analyzing content impact:', error)
-        // Don't fail the upload if impact analysis fails
+        // Log error for tracking but don't fail the upload
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error analyzing content impact:', error)
+        }
+        // TODO: Add proper error tracking service (e.g., Sentry) for production
       })
 
     revalidatePath('/org')
@@ -201,6 +208,12 @@ export async function uploadAndIngestContent(formData: FormData) {
 
 /**
  * Attach existing content to a scope
+ * 
+ * @param workspaceId - Workspace ID
+ * @param contentId - Content ID to attach
+ * @param scope - Scope to attach content to
+ * @returns Success status
+ * @throws Error if user is unauthorized, workspace access denied, or link creation fails
  */
 export async function attachContentToScope(
   workspaceId: string,
@@ -230,6 +243,11 @@ export async function attachContentToScope(
 /**
  * Delete content file completely
  * Deletes the file from storage, content table, all links, and all chunks
+ * 
+ * @param workspaceId - Workspace ID
+ * @param contentId - Content ID to delete
+ * @returns Success status
+ * @throws Error if user is unauthorized, workspace access denied, content not found, or deletion fails
  */
 export async function deleteContentFile(
   workspaceId: string,
@@ -269,7 +287,9 @@ export async function deleteContentFile(
 
     if (storageError) {
       // Log but don't fail - file might already be deleted
-      console.warn('Failed to delete file from storage:', storageError.message)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to delete file from storage:', storageError.message)
+      }
     }
   }
 
@@ -281,7 +301,9 @@ export async function deleteContentFile(
     .eq('workspace_id', workspaceId)
 
   if (chunksError) {
-    console.warn('Failed to delete content chunks:', chunksError.message)
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('Failed to delete content chunks:', chunksError.message)
+    }
   }
 
   // 4. Delete all content links (cascade should handle this, but being explicit)
@@ -292,7 +314,9 @@ export async function deleteContentFile(
     .eq('workspace_id', workspaceId)
 
   if (linksError) {
-    console.warn('Failed to delete content links:', linksError.message)
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('Failed to delete content links:', linksError.message)
+    }
   }
 
   // 5. Delete content record (this should cascade delete links and chunks, but we did it explicitly above)
@@ -312,8 +336,11 @@ export async function deleteContentFile(
       return analyzeImpactForDeletedContent(workspaceId, contentId)
     })
     .catch((error) => {
-      console.error('Error analyzing deletion impact:', error)
-      // Don't fail the deletion if impact analysis fails
+      // Log error for tracking but don't fail the deletion
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Error analyzing deletion impact:', error)
+      }
+      // TODO: Add proper error tracking service (e.g., Sentry) for production
     })
 
   revalidatePath('/org')

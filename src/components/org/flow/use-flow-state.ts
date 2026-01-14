@@ -121,19 +121,31 @@ export function useFlowState({ initialNodes, initialEdges, currentWorkspace }: U
     })
   }, [nodes, edges, setNodes])
 
+  // Debounce layout saves to avoid excessive database writes during drag
+  const saveLayoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  
   const handleNodesUpdate = useCallback((updatedNodes: FlowNode[]) => {
     setNodes(updatedNodes as Node[])
     
-    // Save layout to database when nodes are moved
+    // Debounce layout saves - only save after user stops moving nodes
     if (currentWorkspace) {
-      const nodesToSave = updatedNodes.map((node) => ({
-        id: node.id,
-        position: node.position || { x: 0, y: 0 },
-        type: node.type,
-      }))
-      saveLayout(currentWorkspace.id, nodesToSave).catch(() => {
-        // Error handled silently - layout save failures are non-critical
-      })
+      // Clear any pending save
+      if (saveLayoutTimeoutRef.current) {
+        clearTimeout(saveLayoutTimeoutRef.current)
+      }
+      
+      // Schedule save after 500ms of inactivity
+      saveLayoutTimeoutRef.current = setTimeout(() => {
+        const nodesToSave = updatedNodes.map((node) => ({
+          id: node.id,
+          position: node.position || { x: 0, y: 0 },
+          type: node.type,
+        }))
+        saveLayout(currentWorkspace.id, nodesToSave).catch(() => {
+          // Error handled silently - layout save failures are non-critical
+        })
+        saveLayoutTimeoutRef.current = null
+      }, 500)
     }
   }, [setNodes, currentWorkspace])
 

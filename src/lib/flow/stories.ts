@@ -34,7 +34,7 @@ export function convertStoriesToNodesAndEdges(stories: Array<{
   position_y: number
   content_ids: string[] | null
   metadata?: Record<string, unknown> | null
-}>): { nodes: FlowNode[]; edges: FlowEdge[] } {
+}>, workspaceId: string): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const nodes: FlowNode[] = []
   const edges: FlowEdge[] = []
 
@@ -51,6 +51,8 @@ export function convertStoriesToNodesAndEdges(stories: Array<{
     if (story.metadata) {
       node.data.metadata = story.metadata
     }
+    // Add workspaceId to node data for dialog access
+    ;(node.data as { workspaceId?: string }).workspaceId = workspaceId
     
     // Removed parentId and extent to allow free movement
     // Stories are still linked to epics via edges, but not constrained by parent bounds

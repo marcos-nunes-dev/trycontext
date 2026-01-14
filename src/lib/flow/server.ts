@@ -25,19 +25,19 @@ export async function getFlowData(workspaceId: string): Promise<{
 
   // Convert epics to nodes
   if (epicsResult.data) {
-    nodes.push(...convertEpicsToNodes(epicsResult.data))
+    nodes.push(...convertEpicsToNodes(epicsResult.data, workspaceId))
   }
 
   // Convert stories to nodes and edges
   if (storiesResult.data) {
-    const { nodes: storyNodes, edges: storyEdges } = convertStoriesToNodesAndEdges(storiesResult.data)
+    const { nodes: storyNodes, edges: storyEdges } = convertStoriesToNodesAndEdges(storiesResult.data, workspaceId)
     nodes.push(...storyNodes)
     edges.push(...storyEdges)
   }
 
   // Convert tasks to nodes and edges
   if (tasksResult.data) {
-    const { nodes: taskNodes, edges: taskEdges } = convertTasksToNodesAndEdges(tasksResult.data)
+    const { nodes: taskNodes, edges: taskEdges } = convertTasksToNodesAndEdges(tasksResult.data, workspaceId)
     nodes.push(...taskNodes)
     edges.push(...taskEdges)
   }

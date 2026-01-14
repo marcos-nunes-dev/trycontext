@@ -48,8 +48,8 @@ function FolderTreeItem({
   const { openDialog } = useDialogRouter()
 
   const hasChildren = item.children && item.children.length > 0
-  const canUpload = item.scopeType && (item.type === 'folder' || item.name === 'Files')
-  const canAttach = item.scopeType && item.type === 'folder' && item.name !== 'Files'
+  const canUpload = item.scopeType && item.type === 'folder'
+  const canAttach = item.scopeType && item.type === 'folder'
   const canDetach = item.type === 'file' && item.linkId
 
   const handleUpload = (e: React.MouseEvent) => {
@@ -124,9 +124,9 @@ function FolderTreeItem({
       <div
         className={cn(
           'group flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-2000/50',
-          hasChildren && 'cursor-pointer',
-          level > 0 && 'ml-4'
+          hasChildren && 'cursor-pointer'
         )}
+        style={level > 0 ? { marginLeft: `${level * 16}px` } : undefined}
         onClick={() => hasChildren && setIsExpanded(!isExpanded)}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}

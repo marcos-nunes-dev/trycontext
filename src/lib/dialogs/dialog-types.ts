@@ -9,6 +9,7 @@ export type DialogRoute =
   | '/org/attach-context'
   | '/org/detach-context'
   | '/org/ai-suggestions'
+  | '/org/node-details'
 
 export interface DialogParams {
   '/org/invite': {
@@ -42,6 +43,11 @@ export interface DialogParams {
   '/org/ai-suggestions': {
     workspaceId: string
   }
+  '/org/node-details': {
+    nodeId: string
+    nodeType: 'epic' | 'story' | 'task'
+    workspaceId: string
+  }
 }
 
 export function isDialogRoute(path: string): path is DialogRoute {
@@ -55,5 +61,6 @@ export function isDialogRoute(path: string): path is DialogRoute {
     '/org/attach-context',
     '/org/detach-context',
     '/org/ai-suggestions',
+    '/org/node-details',
   ].some(route => path.startsWith(route)) || path.startsWith('/org/delete-workspace/')
 }

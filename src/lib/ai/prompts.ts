@@ -142,6 +142,53 @@ Return a JSON object with the refined ${nodeType}:
 }
 
 /**
+ * Prompt for evaluating missing context
+ */
+export function buildEvaluateMissingContextPrompt(
+  workItemDescription: string,
+  currentGaps: string[],
+  context: RetrievalResult[]
+): string {
+  const contextString = context
+    .map((chunk, idx) => {
+      const source = chunk.metadata?.sourceFileName || 'Unknown source'
+      return `--- Context Chunk ${idx + 1} ---\nContent ID: ${chunk.contentId}\nChunk ID: ${chunk.chunkId}\nSource: "${source}"\nText:\n${chunk.text}\n`
+    })
+    .join('\n\n')
+
+  return `You are an AI Product Manager. Your task is to review a work item's description and its current identified information gaps, then re-evaluate if there are still missing pieces of information based on additional context.
+
+--- Work Item Description ---
+${workItemDescription}
+--- Current Gaps ---
+${currentGaps.length > 0 ? currentGaps.map(g => `- ${g}`).join('\n') : 'No current gaps identified.'}
+--- Additional Context ---
+${contextString}
+--- End Additional Context ---
+
+Based on the work item description, current gaps, and the additional context, identify any remaining or new missing information or questions that need further clarification. For each gap, assign a severity (low, medium, high).
+
+Your output MUST be a JSON array of objects, where each object has:
+- "type": One of "missing_info", "unclear_requirement", "technical_detail", "user_experience"
+- "description": A clear description of what information is missing
+- "severity": One of "none", "low", "medium", "high"
+- "questions": (optional) Array of specific questions that need answers
+
+Example:
+[
+  {
+    "type": "missing_info",
+    "description": "The API endpoint structure is not specified",
+    "severity": "medium",
+    "questions": ["What is the expected request format?", "What authentication method should be used?"]
+  }
+]
+
+If no gaps are found, return an empty array [].
+`
+}
+
+/**
  * Prompt for analyzing impact of new content
  */
 export function buildImpactAnalysisPrompt(

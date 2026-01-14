@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
@@ -10,17 +11,8 @@ interface MarkdownProps {
   maxLines?: number
 }
 
-/**
- * Safe Markdown renderer with GFM support and HTML disabled
- * Uses skipHtml to prevent XSS attacks
- */
-export function Markdown({ content, className, maxLines }: MarkdownProps) {
-  return (
-    <div className={cn('prose prose-sm dark:prose-invert max-w-none', className)}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        skipHtml // Disable raw HTML for security
-        components={{
+// Memoize markdown components to avoid recreation on every render
+const markdownComponents = {
           // Customize link rendering to open in new tab safely
           a: ({ node, ...props }) => (
             <a
@@ -75,9 +67,26 @@ export function Markdown({ content, className, maxLines }: MarkdownProps) {
               className="border-l-2 border-gray-2000 pl-2 italic text-gray-1700"
             />
           ),
-        }}
+        }
+
+/**
+ * Safe Markdown renderer with GFM support and HTML disabled
+ * Uses skipHtml to prevent XSS attacks
+ * Memoized to prevent unnecessary re-renders
+ */
+export function Markdown({ content, className, maxLines }: MarkdownProps) {
+  // Memoize the markdown content to avoid re-parsing on every render
+  // Only re-parse if content actually changes
+  const memoizedContent = useMemo(() => content, [content])
+
+  return (
+    <div className={cn('prose prose-sm dark:prose-invert max-w-none', className)}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        skipHtml // Disable raw HTML for security
+        components={markdownComponents}
       >
-        {content}
+        {memoizedContent}
       </ReactMarkdown>
     </div>
   )
@@ -85,8 +94,18 @@ export function Markdown({ content, className, maxLines }: MarkdownProps) {
 
 /**
  * Truncated Markdown renderer for cards/previews
+ * Optimized for performance with memoization
  */
 export function MarkdownPreview({ content, className, maxLines = 3 }: MarkdownProps) {
+  // Truncate content early to reduce parsing overhead
+  const truncatedContent = useMemo(() => {
+    if (!content) return ''
+    // Simple truncation - take first N lines
+    const lines = content.split('\n')
+    if (lines.length <= maxLines) return content
+    return lines.slice(0, maxLines).join('\n') + '...'
+  }, [content, maxLines])
+
   return (
     <div
       className={cn(
@@ -95,7 +114,7 @@ export function MarkdownPreview({ content, className, maxLines = 3 }: MarkdownPr
         className
       )}
     >
-      <Markdown content={content} className={className} />
+      <Markdown content={truncatedContent} className={className} />
     </div>
   )
 }

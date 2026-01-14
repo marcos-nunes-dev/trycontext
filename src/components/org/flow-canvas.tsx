@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useEffect, useCallback } from 'react'
+import { useMemo, useEffect, useCallback, useRef } from 'react'
 import {
   ReactFlow,
   Background,
@@ -15,7 +15,6 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { motion, AnimatePresence } from 'framer-motion'
 import { EpicNode } from './flow-nodes/epic-node'
 import { EpicGroupNode } from './flow-nodes/epic-group-node'
 import { StoryNode } from './flow-nodes/story-node'
@@ -61,6 +60,8 @@ function FlowCanvasInner({
   isLoading = false,
 }: FlowCanvasInnerProps) {
   const reactFlowInstance = useReactFlow()
+  const lastZoomRef = useRef<number>(1)
+  const zoomUpdateFrameRef = useRef<number | null>(null)
 
   // Expose ReactFlow instance to parent on mount
   useEffect(() => {
@@ -70,7 +71,9 @@ function FlowCanvasInner({
     
     // Initial zoom value
     if (onZoomChange) {
-      onZoomChange(reactFlowInstance.getZoom())
+      const initialZoom = reactFlowInstance.getZoom()
+      onZoomChange(initialZoom)
+      lastZoomRef.current = initialZoom
     }
   }, [reactFlowInstance, onInit, onZoomChange])
 
@@ -82,84 +85,94 @@ function FlowCanvasInner({
     []
   )
 
+  // Throttled zoom change handler - only update when zoom changes significantly
+  const handleMove = useCallback(
+    (_event: React.MouseEvent | React.TouchEvent | null, viewport: { zoom: number }) => {
+      if (!onZoomChange) return
+
+      // Only update if zoom changed significantly (0.01 threshold to avoid micro-updates)
+      const zoomDiff = Math.abs(viewport.zoom - lastZoomRef.current)
+      if (zoomDiff < 0.01) return
+
+      // Cancel any pending update
+      if (zoomUpdateFrameRef.current !== null) {
+        cancelAnimationFrame(zoomUpdateFrameRef.current)
+      }
+
+      // Schedule update on next frame
+      zoomUpdateFrameRef.current = requestAnimationFrame(() => {
+        lastZoomRef.current = viewport.zoom
+        onZoomChange(viewport.zoom)
+        zoomUpdateFrameRef.current = null
+      })
+    },
+    [onZoomChange]
+  )
+
   // Handle node drag stop - resolve any collisions
   const handleNodeDragStop = useCallback(
     (_event: React.MouseEvent, _node: Node, draggedNodes: Node[]) => {
-      // Resolve collisions after dragging
-      const resolvedNodes = resolveCollisions(draggedNodes as unknown as FlowNode[], {
-        maxIterations: 50,
-        overlapThreshold: 0.01,
-        margin: 15,
-      })
+      // Only run collision resolution if multiple nodes were dragged or if explicitly needed
+      // Defer collision resolution to avoid blocking drag end
+      requestAnimationFrame(() => {
+        const resolvedNodes = resolveCollisions(draggedNodes as unknown as FlowNode[], {
+          maxIterations: 50,
+          overlapThreshold: 0.01,
+          margin: 15,
+        })
 
-      // Check if any positions changed
-      const hasChanges = resolvedNodes.some((resolvedNode, index) => {
-        const originalNode = draggedNodes[index]
-        return (
-          resolvedNode.position.x !== originalNode.position.x ||
-          resolvedNode.position.y !== originalNode.position.y
-        )
-      })
+        // Check if any positions changed
+        const hasChanges = resolvedNodes.some((resolvedNode, index) => {
+          const originalNode = draggedNodes[index]
+          return (
+            resolvedNode.position.x !== originalNode.position.x ||
+            resolvedNode.position.y !== originalNode.position.y
+          )
+        })
 
-      // Notify parent of updated positions if there were collision resolutions
-      if (hasChanges && onNodesUpdate) {
-        onNodesUpdate(resolvedNodes)
-      }
+        // Notify parent of updated positions if there were collision resolutions
+        if (hasChanges && onNodesUpdate) {
+          onNodesUpdate(resolvedNodes)
+        }
+      })
     },
     [onNodesUpdate]
   )
 
   return (
     <div className="relative w-full h-full">
-      <AnimatePresence mode="wait">
-        {!isLoading && (
-          <motion.div
-            key="flow-canvas"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="w-full h-full"
-          >
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onNodeClick={onNodeClick}
-              onPaneClick={onPaneClick}
-              onNodeDragStop={handleNodeDragStop}
-              onMove={(_, viewport) => {
-                if (onZoomChange) {
-                  onZoomChange(viewport.zoom)
-                }
-              }}
-              nodeTypes={nodeTypes}
-              defaultEdgeOptions={defaultEdgeOptions}
-              panOnDrag={panOnDrag}
-              fitView
-              className="bg-black"
-            >
-              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#3e3e44" />
-            </ReactFlow>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      {isLoading && (
-        <motion.div
-          key="loading"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="absolute inset-0 bg-black flex items-center justify-center"
+      {!isLoading ? (
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
+          onNodeDragStop={handleNodeDragStop}
+          onMove={handleMove}
+          nodeTypes={nodeTypes}
+          defaultEdgeOptions={defaultEdgeOptions}
+          panOnDrag={panOnDrag}
+          fitView
+          className="bg-black"
+          // Performance optimizations
+          nodeOrigin={[0.5, 0.5]}
+          selectNodesOnDrag={false}
+          elevateNodesOnSelect={false}
+          nodesDraggable={true}
+          elementsSelectable={true}
         >
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#3e3e44" />
+        </ReactFlow>
+      ) : (
+        <div className="absolute inset-0 bg-black flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <div className="w-8 h-8 border-2 border-gray-2000 border-t-foreground rounded-full animate-spin" />
             <span className="text-sm text-gray-1700">Loading workspace...</span>
           </div>
-        </motion.div>
+        </div>
       )}
     </div>
   )

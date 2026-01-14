@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { User, AtSign, Lock } from 'lucide-react'
+import { User, AtSign, Lock, Eye, EyeOff } from 'lucide-react'
 import { LoadingButton } from '@/components/ui/loading/loading-button'
 import { FormSection } from '@/components/ui/form/form-section'
 import { AuthFormField } from '@/components/auth/auth-form-field'
@@ -28,6 +28,8 @@ export function SignUpForm({ invitationToken }: SignUpFormProps) {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const { execute: handleSignUp, isPending } = useAction(signUpAction, {
     onSuccess: () => {
@@ -135,7 +137,7 @@ export function SignUpForm({ invitationToken }: SignUpFormProps) {
           icon={<Lock className="size-4" aria-hidden="true" />}
           inputProps={{
             placeholder: 'Password',
-            type: 'password',
+            type: showPassword ? 'text' : 'password',
             name: 'password',
             value: password,
             onChange: (e) => setPassword(e.target.value),
@@ -143,13 +145,27 @@ export function SignUpForm({ invitationToken }: SignUpFormProps) {
             disabled: isPending,
             minLength: 6,
           }}
+          rightElement={
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? (
+                <EyeOff className="size-4" aria-hidden="true" />
+              ) : (
+                <Eye className="size-4" aria-hidden="true" />
+              )}
+            </button>
+          }
         />
-        
+
         <AuthFormField
           icon={<Lock className="size-4" aria-hidden="true" />}
           inputProps={{
             placeholder: 'Confirm password',
-            type: 'password',
+            type: showConfirmPassword ? 'text' : 'password',
             name: 'confirmPassword',
             value: confirmPassword,
             onChange: (e) => setConfirmPassword(e.target.value),
@@ -157,6 +173,20 @@ export function SignUpForm({ invitationToken }: SignUpFormProps) {
             disabled: isPending,
             minLength: 6,
           }}
+          rightElement={
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+            >
+              {showConfirmPassword ? (
+                <EyeOff className="size-4" aria-hidden="true" />
+              ) : (
+                <Eye className="size-4" aria-hidden="true" />
+              )}
+            </button>
+          }
         />
 
           <LoadingButton type="submit" className="w-full" isLoading={isPending}>

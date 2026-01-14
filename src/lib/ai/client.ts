@@ -18,63 +18,56 @@ const openai = new OpenAI({
 })
 
 /**
- * Generate a complete plan (epics, stories, tasks) from context
+ * Retry OpenAI API call with exponential backoff
+ * @param fn - Function to retry
+ * @param maxRetries - Maximum number of retries
+ * @returns Result of the function call
  */
-export async function generatePlan(
-  workspaceName: string,
-  contextChunks: RetrievalResult[]
-): Promise<PlanProposal> {
-  const context = contextChunks
-    .map((chunk, idx) => {
-      const source = chunk.metadata?.sourceFileName || 'Unknown source'
-      return `[Context ${idx + 1} from "${source}"]\n${chunk.text}\n`
-    })
-    .join('\n---\n\n')
-
-  const prompt = buildPlanGenerationPrompt(workspaceName, context)
-
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini', // Using mini for cost efficiency, can upgrade to gpt-4o if needed
-    messages: [
-      {
-        role: 'system',
-        content: 'You are an expert product manager. Always return valid JSON matching the requested schema.',
-      },
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.7,
-  })
-
-  const content = response.choices[0]?.message?.content
-  if (!content) {
-    throw new Error('No response from OpenAI')
+async function retryOpenAICall<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3
+): Promise<T> {
+  let lastError: Error | unknown
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+      // Don't retry on client errors (4xx)
+      if (error instanceof Error && 'status' in error) {
+        const status = (error as { status?: number }).status
+        if (status && status >= 400 && status < 500) {
+          throw error
+        }
+      }
+      // Exponential backoff: 1s, 2s, 4s
+      if (attempt < maxRetries - 1) {
+        const delay = Math.pow(2, attempt) * 1000
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
   }
+  throw lastError
+}
 
-  try {
-    const parsed = JSON.parse(content)
-    
-    // Transform citations: map placeholder IDs (like "context-1") to actual UUIDs from chunks
-    const chunkMap = new Map<string, RetrievalResult>()
-    contextChunks.forEach((chunk, idx) => {
-      // Map by index (context-1, context-2, etc.)
-      const contextKey = `context-${idx + 1}`
-      chunkMap.set(contextKey, chunk)
-      chunkMap.set(String(idx + 1), chunk)
-      // Also map by actual IDs in case AI uses them
-      chunkMap.set(chunk.contentId, chunk)
-      chunkMap.set(chunk.chunkId, chunk)
-    })
-    
-    console.log(`[AI Client] Mapped ${chunkMap.size} chunk references for transformation`)
-    
-    // Helper to transform a citation
-    const transformCitation = (citation: { contentId?: string; chunkId?: string; relevance?: number }) => {
+/**
+ * Transform citations from AI response (which may use placeholders) to actual UUIDs
+ * @param citations - Array of citations from AI response
+ * @param chunkMap - Map of chunk references to actual RetrievalResult objects
+ * @param contextChunks - Original context chunks array for index-based lookup
+ * @returns Transformed citations with valid UUIDs
+ */
+function transformCitations(
+  citations: Array<{ contentId?: string; chunkId?: string; relevance?: number }>,
+  chunkMap: Map<string, RetrievalResult>,
+  contextChunks: RetrievalResult[]
+): Array<{ contentId: string; chunkId?: string; relevance?: number }> {
+  return citations
+    .map(citation => {
       if (!citation.contentId) {
-        console.warn(`[AI Client] Citation missing contentId:`, citation)
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(`[AI Client] Citation missing contentId:`, citation)
+        }
         return null
       }
       
@@ -138,8 +131,82 @@ export async function generatePlan(
       }
       
       // Skip invalid citations that we couldn't map
-      console.warn(`[AI Client] Could not map citation:`, citation)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`[AI Client] Could not map citation:`, citation)
+      }
       return null
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null)
+}
+
+/**
+ * Generate a complete plan (epics, stories, tasks) from context
+ * 
+ * @param workspaceName - Name of the workspace for context
+ * @param contextChunks - Array of retrieved content chunks to use as context
+ * @returns Plan proposal with epics, stories, and tasks
+ * @throws Error if OpenAI API fails, response is invalid, or context chunks are empty
+ */
+export async function generatePlan(
+  workspaceName: string,
+  contextChunks: RetrievalResult[]
+): Promise<PlanProposal> {
+  // Input validation
+  if (!workspaceName || workspaceName.trim().length === 0) {
+    throw new Error('Workspace name is required')
+  }
+  if (!contextChunks || contextChunks.length === 0) {
+    throw new Error('Context chunks are required for plan generation')
+  }
+  const context = contextChunks
+    .map((chunk, idx) => {
+      const source = chunk.metadata?.sourceFileName || 'Unknown source'
+      return `[Context ${idx + 1} from "${source}"]\n${chunk.text}\n`
+    })
+    .join('\n---\n\n')
+
+  const prompt = buildPlanGenerationPrompt(workspaceName, context)
+
+  const response = await retryOpenAICall(() =>
+    openai.chat.completions.create({
+      model: 'gpt-4o-mini', // Using mini for cost efficiency, can upgrade to gpt-4o if needed
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert product manager. Always return valid JSON matching the requested schema.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    })
+  )
+
+  const content = response.choices[0]?.message?.content
+  if (!content) {
+    throw new Error('No response from OpenAI')
+  }
+
+  try {
+    const parsed = JSON.parse(content)
+    
+    // Transform citations: map placeholder IDs (like "context-1") to actual UUIDs from chunks
+    const chunkMap = new Map<string, RetrievalResult>()
+    contextChunks.forEach((chunk, idx) => {
+      // Map by index (context-1, context-2, etc.)
+      const contextKey = `context-${idx + 1}`
+      chunkMap.set(contextKey, chunk)
+      chunkMap.set(String(idx + 1), chunk)
+      // Also map by actual IDs in case AI uses them
+      chunkMap.set(chunk.contentId, chunk)
+      chunkMap.set(chunk.chunkId, chunk)
+    })
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[AI Client] Mapped ${chunkMap.size} chunk references for transformation`)
     }
     
     // Transform epics citations
@@ -147,7 +214,7 @@ export async function generatePlan(
       parsed.epics = parsed.epics.map((epic: unknown) => {
         const e = epic as { citations?: Array<{ contentId?: string; chunkId?: string; relevance?: number }> }
         if (e.citations) {
-          e.citations = e.citations.map(transformCitation).filter((c): c is NonNullable<typeof c> => c !== null)
+          e.citations = transformCitations(e.citations, chunkMap, contextChunks)
         }
         return e
       })
@@ -157,7 +224,7 @@ export async function generatePlan(
     if (parsed.stories) {
       parsed.stories = parsed.stories.map((item: { story?: { citations?: Array<{ contentId?: string; chunkId?: string; relevance?: number }> } }) => {
         if (item.story?.citations) {
-          item.story.citations = item.story.citations.map(transformCitation).filter((c): c is NonNullable<typeof c> => c !== null)
+          item.story.citations = transformCitations(item.story.citations, chunkMap, contextChunks)
         }
         return item
       })
@@ -167,7 +234,7 @@ export async function generatePlan(
     if (parsed.tasks) {
       parsed.tasks = parsed.tasks.map((item: { task?: { citations?: Array<{ contentId?: string; chunkId?: string; relevance?: number }> } }) => {
         if (item.task?.citations) {
-          item.task.citations = item.task.citations.map(transformCitation).filter((c): c is NonNullable<typeof c> => c !== null)
+          item.task.citations = transformCitations(item.task.citations, chunkMap, contextChunks)
         }
         return item
       })
@@ -195,26 +262,47 @@ export async function generatePlan(
     ].every(v => v)
     
     if (!allValid) {
-      console.error('[AI Client] Some citations are still invalid after transformation')
-      console.error('Validated plan:', JSON.stringify(validated, null, 2))
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[AI Client] Some citations are still invalid after transformation')
+        console.error('Validated plan:', JSON.stringify(validated, null, 2))
+      }
+      // Continue anyway - invalid citations will be filtered out
     }
     
     return validated
   } catch (error) {
-    console.error('Failed to parse AI response:', error)
-    console.error('Raw response:', content)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Failed to parse AI response:', error)
+      console.error('Raw response:', content)
+    }
     throw new Error(`Failed to parse AI response: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
 /**
  * Refine a single node based on additional context
+ * 
+ * @param nodeType - Type of node to refine ('epic', 'story', or 'task')
+ * @param currentNode - Current node data with title and description
+ * @param contextChunks - Array of retrieved content chunks to use as context
+ * @returns Partial work item metadata with refined information
+ * @throws Error if OpenAI API fails, response is invalid, or context chunks are empty
  */
 export async function refineNode(
   nodeType: 'epic' | 'story' | 'task',
   currentNode: { title: string; description: string },
   contextChunks: RetrievalResult[]
 ): Promise<Partial<WorkItemMetadata>> {
+  // Input validation
+  if (!nodeType || !['epic', 'story', 'task'].includes(nodeType)) {
+    throw new Error('Invalid node type')
+  }
+  if (!currentNode?.title || currentNode.title.trim().length === 0) {
+    throw new Error('Node title is required')
+  }
+  if (!contextChunks || contextChunks.length === 0) {
+    throw new Error('Context chunks are required for refinement')
+  }
   const context = contextChunks
     .map((chunk, idx) => {
       const source = (chunk.metadata?.sourceFileName as string) || 'Unknown source'
@@ -224,21 +312,23 @@ export async function refineNode(
 
   const prompt = buildNodeRefinementPrompt(nodeType, currentNode, context)
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'system',
-        content: 'You are an expert product manager. Always return valid JSON matching the requested schema.',
-      },
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.7,
-  })
+  const response = await retryOpenAICall(() =>
+    openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert product manager. Always return valid JSON matching the requested schema.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    })
+  )
 
   const content = response.choices[0]?.message?.content
   if (!content) {
@@ -266,13 +356,21 @@ export async function refineNode(
       },
     }
   } catch (error) {
-    console.error('Failed to parse AI refinement response:', error)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Failed to parse AI refinement response:', error)
+    }
     throw new Error(`Failed to parse AI response: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
 /**
  * Analyze impact of content changes on existing work items
+ * 
+ * @param affectedNodes - Array of work items that might be affected
+ * @param contextChunks - Array of retrieved content chunks (new content or deleted content context)
+ * @param trigger - Type of trigger ('content_uploaded' or 'content_deleted')
+ * @returns Array of change suggestions with diffs and citations
+ * @throws Error if OpenAI API fails or response is invalid
  */
 export async function analyzeImpact(
   affectedNodes: Array<{ type: 'epic' | 'story' | 'task'; id: string; title: string; description: string }>,
@@ -285,6 +383,13 @@ export async function analyzeImpact(
   diffs: Array<{ field: string; before: unknown; after: unknown; reason?: string }>
   citations: Array<{ contentId: string; chunkId?: string }>
 }>> {
+  // Input validation
+  if (!affectedNodes || affectedNodes.length === 0) {
+    return []
+  }
+  if (!trigger || !['content_uploaded', 'content_deleted'].includes(trigger)) {
+    throw new Error('Invalid trigger type')
+  }
   const context = contextChunks
     .map((chunk, idx) => {
       const source = (chunk.metadata?.sourceFileName as string) || 'Unknown source'
@@ -294,21 +399,23 @@ export async function analyzeImpact(
 
   const prompt = buildImpactAnalysisPrompt(affectedNodes, context, trigger)
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'system',
-        content: 'You are an expert product manager. Always return valid JSON matching the requested schema.',
-      },
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.5, // Lower temperature for more consistent impact analysis
-  })
+  const response = await retryOpenAICall(() =>
+    openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert product manager. Always return valid JSON matching the requested schema.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.5, // Lower temperature for more consistent impact analysis
+    })
+  )
 
   const content = response.choices[0]?.message?.content
   if (!content) {
@@ -321,7 +428,9 @@ export async function analyzeImpact(
     const suggestions = Array.isArray(parsed) ? parsed : parsed.suggestions || []
     return suggestions
   } catch (error) {
-    console.error('Failed to parse AI impact analysis response:', error)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Failed to parse AI impact analysis response:', error)
+    }
     throw new Error(`Failed to parse AI response: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }

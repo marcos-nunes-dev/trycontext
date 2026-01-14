@@ -10,6 +10,10 @@ import type { RetrievalResult } from '@/lib/content/retrieval'
 
 /**
  * Analyze impact of new content upload
+ * 
+ * @param workspaceId - Workspace ID where content was uploaded
+ * @param contentId - ID of the uploaded content
+ * @returns Success status and number of suggestions created
  */
 export async function analyzeImpactForContent(
   workspaceId: string,
@@ -26,7 +30,9 @@ export async function analyzeImpactForContent(
     .limit(20) // Get top chunks
 
   if (chunksError || !newChunks || newChunks.length === 0) {
-    console.warn('No chunks found for content:', contentId)
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('No chunks found for content:', contentId)
+    }
     return { success: false, error: 'No content chunks found' }
   }
 
@@ -109,19 +115,28 @@ export async function analyzeImpactForContent(
       if (!error) {
         created++
       } else {
-        console.error('Error creating suggestion:', error)
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error creating suggestion:', error)
+        }
+        // Continue with other suggestions even if one fails
       }
     }
 
     return { success: true, suggestionsCreated: created }
   } catch (error) {
-    console.error('Error analyzing impact:', error)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error analyzing impact:', error)
+    }
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
 
 /**
  * Analyze impact of content deletion
+ * 
+ * @param workspaceId - Workspace ID where content was deleted
+ * @param contentId - ID of the deleted content
+ * @returns Success status and number of suggestions created
  */
 export async function analyzeImpactForDeletedContent(
   workspaceId: string,
@@ -211,13 +226,18 @@ export async function analyzeImpactForDeletedContent(
       if (!error) {
         created++
       } else {
-        console.error('Error creating suggestion:', error)
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error creating suggestion:', error)
+        }
+        // Continue with other suggestions even if one fails
       }
     }
 
     return { success: true, suggestionsCreated: created }
   } catch (error) {
-    console.error('Error analyzing deletion impact:', error)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error analyzing deletion impact:', error)
+    }
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }

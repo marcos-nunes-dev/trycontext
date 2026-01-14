@@ -48,6 +48,7 @@ This document tracks all known technical debts, temporary implementations, and a
 - [ ] Plan async job queue migration when needed
 - [ ] Test vector insertion with actual Supabase instance
 - [ ] Add database function for vector insertion if direct insert fails
+- [ ] **In-memory vector similarity computation**: Currently computes cosine similarity in memory after fetching chunks. For production scale, should use database-level pgvector similarity search (e.g., `<=>` operator or `vector_cosine_ similarity` function) to leverage database indexes and reduce memory usage. Location: `src/lib/content/retrieval.ts` lines 124-169.
 - [ ] Consider adding progress tracking for long-running ingestions
 
 **Priority:** Medium (works for MVP, but needs monitoring)
